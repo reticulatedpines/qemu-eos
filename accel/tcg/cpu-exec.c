@@ -146,6 +146,27 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     int tb_exit;
     uint8_t *tb_ptr = itb->tc.ptr;
 
+#if defined(TARGET_ARM)
+    if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
+        qemu_log_lock();
+        /* rather than logging just PC, also log the disassembled code */
+        if (!singlestep) {
+            /* separate translation blocks by newlines */
+            qemu_log("\n");
+        }
+        /* some instructions are printed more than once, not sure why */
+        static int prev_pc = -1;
+        if (itb->pc != prev_pc) {
+            prev_pc = itb->pc;
+            if (CPU_NEXT(first_cpu)) {
+                qemu_log("[CPU%d] ", current_cpu->cpu_index);
+            }
+            log_target_disas(cpu, itb->pc, itb->size);
+        }
+        qemu_log_unlock();
+    }
+#endif
+
     qemu_log_mask_and_addr(CPU_LOG_EXEC, itb->pc,
                            "Trace %d: %p ["
                            TARGET_FMT_lx "/" TARGET_FMT_lx "/%#x] %s\n",
@@ -392,6 +413,16 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
     return;
 }
 
+static void (*tb_exec_cb)(void *opaque, CPUState *cpu, TranslationBlock *tb);
+static void * tb_exec_opaque;
+
+void cpu_set_tb_exec_cb(void (*cb)(void *opaque, CPUState *cpu, TranslationBlock *tb),
+                        void *opaque)
+{
+    tb_exec_cb = cb;
+    tb_exec_opaque = opaque;
+}
+
 static inline TranslationBlock *tb_find(CPUState *cpu,
                                         TranslationBlock *last_tb,
                                         int tb_exit, uint32_t cf_mask)
@@ -417,6 +448,9 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
         last_tb = NULL;
     }
 #endif
+    if (tb_exec_cb) {
+        tb_exec_cb(tb_exec_opaque, cpu, tb);
+    }
     /* See if we can patch the calling TB. */
     if (last_tb) {
         tb_add_jump(last_tb, tb_exit, tb);

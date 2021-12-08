@@ -1417,6 +1417,10 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
 
     if (!memory_region_access_valid(mr, addr, size, false, attrs)) {
         *pval = unassigned_mem_read(mr, addr, size);
+        fprintf(stderr, "[EOS] MEMTX invalid read - addr, size: 0x%lx, 0x%x\n", addr, size);
+        // the cause needs investigating, but if this is due to a read from normal ram
+        // that would succeed on real cam, extending ram_extra in model_list.c may be appropriate.
+        assert(0);
         return MEMTX_DECODE_ERROR;
     }
 
@@ -1461,6 +1465,10 @@ MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
 
     if (!memory_region_access_valid(mr, addr, size, true, attrs)) {
         unassigned_mem_write(mr, addr, data, size);
+        fprintf(stderr, "[EOS] MEMTX invalid write - addr, size: 0x%lx, 0x%x\n", addr, size);
+        // the cause needs investigating, but if this is due to a write from normal ram
+        // that would succeed on real cam, extending ram_extra in model_list.c may be appropriate.
+        assert(0);
         return MEMTX_DECODE_ERROR;
     }
 
@@ -2398,6 +2406,9 @@ void memory_region_add_subregion(MemoryRegion *mr,
                                  hwaddr offset,
                                  MemoryRegion *subregion)
 {
+    fprintf(stderr, "%08X - %08X: %s\n",
+                     (int)offset, (int)offset + (int)int128_getlo(subregion->size) - 1,
+                     subregion->name);
     subregion->priority = 0;
     memory_region_add_subregion_common(mr, offset, subregion);
 }

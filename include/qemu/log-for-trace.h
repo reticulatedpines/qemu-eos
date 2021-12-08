@@ -19,12 +19,12 @@
 #define QEMU_LOG_FOR_TRACE_H
 
 /* Private global variable, don't use */
-extern int qemu_loglevel;
+extern uint64_t qemu_loglevel;
 
 #define LOG_TRACE          (1 << 15)
 
 /* Returns true if a bit is set in the current loglevel mask */
-static inline bool qemu_loglevel_mask(int mask)
+static inline bool qemu_loglevel_mask(uint64_t mask)
 {
     return (qemu_loglevel & mask) != 0;
 }

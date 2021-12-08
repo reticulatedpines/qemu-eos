@@ -156,8 +156,11 @@ static int glue(load_symbols, SZ)(struct elfhdr *ehdr, int fd, int must_swab,
         /* We are only interested in function symbols.
            Throw everything else away.  */
         if (syms[i].st_shndx == SHN_UNDEF ||
-                syms[i].st_shndx >= SHN_LORESERVE ||
-                ELF_ST_TYPE(syms[i].st_info) != STT_FUNC) {
+           (!(syms[i].st_shndx == SHN_ABS &&         /* allow ABS symbols (ML stubs) */
+              ELF_ST_TYPE(syms[i].st_info) == STT_NOTYPE &&
+              syms[i].st_size == 0) &&
+              (syms[i].st_shndx >= SHN_LORESERVE ||
+               ELF_ST_TYPE(syms[i].st_info) != STT_FUNC))) {
             nsyms--;
             if (i < nsyms) {
                 syms[i] = syms[nsyms];
@@ -173,9 +176,13 @@ static int glue(load_symbols, SZ)(struct elfhdr *ehdr, int fd, int must_swab,
     syms = g_realloc(syms, nsyms * sizeof(*syms));
 
     qsort(syms, nsyms, sizeof(*syms), glue(symcmp, SZ));
-    for (i = 0; i < nsyms - 1; i++) {
+    for (i = 0; i < nsyms; i++) {
         if (syms[i].st_size == 0) {
-            syms[i].st_size = syms[i + 1].st_value - syms[i].st_value;
+            if (syms[i].st_shndx == SHN_ABS) {
+                syms[i].st_size = 4;
+            } else if (i + 1 < nsyms) {
+                syms[i].st_size = syms[i + 1].st_value - syms[i].st_value;
+            }
         }
     }
 

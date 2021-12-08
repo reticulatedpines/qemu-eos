@@ -39,6 +39,11 @@ config DIGIC
     select PTIMER
     select PFLASH_CFI02
 
+config EOS
+    bool
+    select PTIMER
+    select PFLASH_CFI02
+
 config EXYNOS4
     bool
     select A9MPCORE

@@ -290,4 +290,8 @@ void gen_cmtst_i64(TCGv_i64 d, TCGv_i64 a, TCGv_i64 b);
 #define dc_isar_feature(name, ctx) \
     ({ DisasContext *ctx_ = (ctx); isar_feature_##name(ctx_->isar); })
 
+/* fixme: duplicate declaration in op_helper.c */
+void log_ldr_cb(uint32_t addr, uint32_t value, uint32_t opc);
+void log_str_cb(uint32_t addr, uint32_t value, uint32_t opc);
+
 #endif /* TARGET_ARM_TRANSLATE_H */

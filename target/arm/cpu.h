@@ -491,6 +491,9 @@ typedef struct CPUARMState {
         uint64_t pmccfiltr_el0; /* Performance Monitor Filter Register */
         uint64_t vpidr_el2; /* Virtualization Processor ID Register */
         uint64_t vmpidr_el2; /* Virtualization Multiprocessor ID Register */
+
+        uint32_t c15_atcm;
+        uint32_t c15_btcm;
     } cp15;
 
     struct {
@@ -868,6 +871,7 @@ struct ARMCPU {
     uint32_t revidr;
     uint32_t reset_fpsid;
     uint32_t ctr;
+    uint32_t tcmtr;
     uint32_t reset_sctlr;
     uint32_t id_pfr0;
     uint32_t id_pfr1;
@@ -1848,6 +1852,7 @@ enum arm_features {
     ARM_FEATURE_VBAR, /* has cp15 VBAR */
     ARM_FEATURE_M_SECURITY, /* M profile Security Extension */
     ARM_FEATURE_M_MAIN, /* M profile Main Extension */
+    ARM_FEATURE_946EOS,    /* EOS-specific (DIGIC 2...5) */
 };
 
 static inline int arm_feature(CPUARMState *env, int feature)

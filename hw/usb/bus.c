@@ -401,7 +401,7 @@ void usb_register_companion(const char *masterbus, USBPort *ports[],
 void usb_port_location(USBPort *downstream, USBPort *upstream, int portnr)
 {
     if (upstream) {
-        int l = snprintf(downstream->path, sizeof(downstream->path), "%s.%d",
+        int l = snprintf(downstream->path, sizeof(downstream->path), "%.12s.%d",
                          upstream->path, portnr);
         /* Max string is nn.nn.nn.nn.nn, which fits in 16 bytes */
         assert(l < sizeof(downstream->path));

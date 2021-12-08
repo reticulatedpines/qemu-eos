@@ -27,7 +27,7 @@
 
 static char *logfilename;
 FILE *qemu_logfile;
-int qemu_loglevel;
+uint64_t qemu_loglevel;
 static int log_append = 0;
 static GArray *debug_regions;
 
@@ -52,7 +52,7 @@ int qemu_log(const char *fmt, ...)
 static bool log_uses_own_buffers;
 
 /* enable or disable low levels log */
-void qemu_set_log(int log_flags)
+void qemu_set_log(uint64_t log_flags)
 {
     qemu_loglevel = log_flags;
 #ifdef CONFIG_TRACE_LOG
@@ -268,23 +268,79 @@ const QEMULogItem qemu_log_items[] = {
       "log unimplemented functionality" },
     { LOG_GUEST_ERROR, "guest_errors",
       "log when the guest OS does something invalid (eg accessing a\n"
-      "non-existent register)" },
+      "           non-existent register)" },
     { CPU_LOG_PAGE, "page",
       "dump pages at beginning of user mode emulation" },
     { CPU_LOG_TB_NOCHAIN, "nochain",
       "do not chain compiled TBs so that \"exec\" and \"cpu\" show\n"
-      "complete traces" },
+      "           complete traces; implies -singlestep" },
 #ifdef CONFIG_PLUGIN
     { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins\n"},
 #endif
+    { EOS_LOG_IO | CPU_LOG_TB_NOCHAIN, "io",
+      "EOS: log low-level I/O activity (implies nochain,singlestep)" },
+    { EOS_LOG_IO, "io_quick",
+      "EOS: log low-level I/O activity (without nochain,singlestep; PC not exact)" },
+    { EOS_LOG_IO_LOG | EOS_LOG_IO | CPU_LOG_TB_NOCHAIN, "io_log",
+      "EOS: for every I/O read, export a mmio_log entry to use in dm-spy-extra.c\n"
+      "                (dm-spy-experiments branch) to see the values from physical hardware." },
+    { EOS_LOG_MPU, "mpu",
+      "EOS: log low-level MPU activity" },
+    { EOS_LOG_SFLASH, "sflash",
+      "EOS: log low-level serial flash activity" },
+    { EOS_LOG_SDCF, "sdcf",
+      "EOS: log low-level SD/CF activity" },
+    { EOS_LOG_UART, "uart",
+      "EOS: log low-level UART activity" },
+
+    { EOS_PR(EOS_LOG_RAM) | EOS_LOG_RAM, "ram",
+      "EOS: log all RAM reads and writes" },
+    { EOS_PR(EOS_LOG_ROM) | EOS_LOG_ROM, "rom",
+      "EOS: log all ROM reads and writes" },
+    { EOS_PR(EOS_LOG_RAM_R) | EOS_LOG_RAM_R, "ramr",
+      "EOS: log all RAM reads" },
+    { EOS_PR(EOS_LOG_ROM_R) | EOS_LOG_ROM_R, "romr",
+      "EOS: log all ROM reads" },
+    { EOS_PR(EOS_LOG_RAM_W) | EOS_LOG_RAM_W, "ramw",
+      "EOS: log all RAM writes" },
+    { EOS_PR(EOS_LOG_ROM_W) | EOS_LOG_ROM_W, "romw",
+      "EOS: log all ROM writes" },
+    { EOS_LOG_RAM_DBG | EOS_LOG_RAM, "ram_dbg",
+      "EOS: self-test for the RAM logging routines" },
+
+    { EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN, "callstack",
+      "EOS: reconstruct call stack (implies nochain,singlestep)" },
+    { EOS_LOG_CALLS | EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN | EOS_LOG_RAM_R, "calls",
+      "EOS: log function calls (implies callstack,nochain,singlestep; monitors RAM reads)" },
+    { EOS_LOG_NO_TAIL_CALLS, "notail",
+      "EOS: don't identify tail calls (for troubleshooting)" },
+    { EOS_LOG_IDC | EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN, "idc",
+      "EOS: export called functions to IDA (implies callstack,nochain,singlestep)" },
+    { EOS_LOG_TASKS, "tasks",
+      "EOS: log task switches (.current_task_addr must be defined)" },
+    { EOS_LOG_DEBUGMSG, "debugmsg",
+      "EOS: log DebugMsg calls (QEMU_EOS_DEBUGMSG must be defined)" },
+    { EOS_LOG_ROMCPY | EOS_LOG_ROM_R | EOS_LOG_RAM_W, "romcpy",
+      "EOS: find memory blocks copied from ROM to RAM" },
+
+    { EOS_LOG_RAM_MEMCHK | EOS_LOG_RAM, "memchk",
+      "EOS: check memory usage (malloc/free, uninitialized values)" },
+
+    { EOS_LOG_AUTOEXEC, "autoexec",
+      "EOS: start verbose logging when autoexec.bin is loaded (quiet logging for bootloader)" },
+
+    { EOS_LOG_VERBOSE, "v", "" },
+    { EOS_LOG_VERBOSE, "verbose",
+      "EOS: very detailed debug messages" },
+
     { 0, NULL, NULL },
 };
 
 /* takes a comma separated list of log masks. Return 0 if error. */
-int qemu_str_to_log_mask(const char *str)
+uint64_t qemu_str_to_log_mask(const char *str)
 {
     const QEMULogItem *item;
-    int mask = 0;
+    uint64_t mask = 0;
     char **parts = g_strsplit(str, ",", 0);
     char **tmp;
 

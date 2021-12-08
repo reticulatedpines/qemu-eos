@@ -833,6 +833,13 @@ static const ARMCPRegInfo not_v6_cp_reginfo[] = {
     REGINFO_SENTINEL
 };
 
+static const ARMCPRegInfo eos_wfi_cp_reginfo[] = {
+    /* similar to not_v6_cp_reginfo, but .crn was changed from 7 to 15 */
+    { .name = "WFI_v5", .cp = 15, .crn = 15, .crm = 8, .opc1 = 0, .opc2 = 2,
+      .access = PL1_W, .type = ARM_CP_WFI },
+    REGINFO_SENTINEL
+};
+
 static const ARMCPRegInfo not_v7_cp_reginfo[] = {
     /* Standard v6 WFI (also used in some pre-v6 cores); not in v7 (which
      * is UNPREDICTABLE; we choose to NOP as most implementations do).
@@ -879,6 +886,138 @@ static const ARMCPRegInfo not_v7_cp_reginfo[] = {
       .opc1 = 0, .opc2 = 0, .access = PL1_RW, .type = ARM_CP_NOP },
     { .name = "NMRR", .cp = 15, .crn = 10, .crm = 2,
       .opc1 = 0, .opc2 = 1, .access = PL1_RW, .type = ARM_CP_NOP },
+    REGINFO_SENTINEL
+};
+
+static const ARMCPRegInfo eos_tcm_cp_reginfo[] = {
+    { .name = "ITCM",       .cp = 15, .opc1 = 0, .crn = 9,  .crm = 1, .opc2 = 1,
+      .access = PL1_RW,     .fieldoffset = offsetof(CPUARMState, cp15.c15_atcm), .resetvalue = 0x00000006 },
+    { .name = "DTCM",       .cp = 15, .opc1 = 0, .crn = 9,  .crm = 1, .opc2 = 0,
+      .access = PL1_RW,     .fieldoffset = offsetof(CPUARMState, cp15.c15_btcm), .resetvalue = 0x40000006 },
+    REGINFO_SENTINEL
+};
+
+/* ARM946E-S (EOS) cache lockdown emulation */
+/* note: the model is very incomplete, just enough to emulate
+ * the cache hacks from Magic Lantern */
+
+struct cache_patch
+{
+    uint32_t addr;
+    uint32_t old;
+    uint32_t new;
+};
+
+static struct cache_patch cache_patches[32];
+
+static int num_cache_patches = 0;
+
+
+static uint64_t eos_cache_lockdown_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    fprintf(stderr, "Lockdown read %x\n", ri->crm);
+    return 0;
+}
+
+static void eos_cache_patch(uint32_t addr, uint32_t value)
+{
+    uint32_t old;
+    cpu_physical_memory_read(addr, &old, sizeof(old));
+    
+    if (value != old)
+    {
+        fprintf(stderr, "Cache patch: [%08X] <- %X (was %X)\n", addr, value, old);
+        cache_patches[num_cache_patches++] = (struct cache_patch) { .addr = addr, .old = old, .new = value };
+        cpu_physical_memory_write(addr, &value, sizeof(value));
+    }
+}
+
+static void eos_revert_cache_patches(void)
+{
+    for ( ; num_cache_patches > 0; num_cache_patches--)
+    {
+        struct cache_patch * p = &cache_patches[num_cache_patches - 1];
+        fprintf(stderr, "Reverting cache patch: [%08X] <- %X (was patched to %X)\n", p->addr, p->old, p->new);
+        cpu_physical_memory_write(p->addr, &p->old, sizeof(p->old));
+    }
+}
+
+static void eos_cache_lockdown_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t val)
+{
+    static uint32_t index = 0;
+    static uint32_t itag = 0;
+    static uint32_t dtag = 0;
+
+    /* FIXME: not exactly accurate, just a rough approximation */
+    /* no difference is made between data and instruction cache -
+     * first cache flush or lockdown disable event will revert all cache patches */
+    switch (ri->crn)
+    {
+        case 7:
+            /* FlushICache */
+            eos_revert_cache_patches();
+            return;
+
+        case 9:
+            /* DLockDown / ILockDown */
+            if (val == 0) {
+                eos_revert_cache_patches();
+            }
+            CPREG_FIELD32(env, ri) = val;
+            return;
+
+        case 15:
+            /* see the next switch */
+            break;
+
+        default:
+            /* unreachable */
+            assert(0);
+    }
+
+    switch (ri->crm)
+    {
+        case 0:             /* cache debug index register */
+            index = val;
+            break;
+        
+        case 1:             /* icache tag */
+            itag = val;
+            break;
+        
+        case 2:             /* dcache tag */
+            dtag = val;
+            break;
+        
+        case 3:             /* icache value */
+            eos_cache_patch((itag & 0xFFFFFFE0) | (index & 0x1C), val);
+            break;
+        
+        case 4:             /* dcache value */
+            eos_cache_patch((dtag & 0xFFFFFFE0) | (index & 0x1C), val);
+            break;
+    }
+}
+
+static const ARMCPRegInfo eos_lockdown_cp_reginfo[] = {
+    { .name = "CacheDbgIdx", .cp = 15, .crn = 15, .crm = 0, .opc1 = 3, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
+    { .name = "IcacheTag",   .cp = 15, .crn = 15, .crm = 1, .opc1 = 3, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
+    { .name = "DcacheTag",   .cp = 15, .crn = 15, .crm = 2, .opc1 = 3, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
+    { .name = "IcacheVal",   .cp = 15, .crn = 15, .crm = 3, .opc1 = 3, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
+    { .name = "DcacheVal",   .cp = 15, .crn = 15, .crm = 4, .opc1 = 3, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
+    { .name = "DLockDown",   .cp = 15, .crn = 9,  .crm = 0, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.c9_data),
+      .writefn = eos_cache_lockdown_write, .resetvalue = 0, .type = ARM_CP_OVERRIDE },
+    { .name = "ILockDown",   .cp = 15, .crn = 9,  .crm = 0, .opc1 = 0, .opc2 = 1,
+      .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.c9_insn),
+      .writefn = eos_cache_lockdown_write, .resetvalue = 0, .type = ARM_CP_OVERRIDE },
+    { .name = "FlushICache", .cp = 15, .crn = 7, .crm = 5, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW, .readfn = eos_cache_lockdown_read, .writefn = eos_cache_lockdown_write },
     REGINFO_SENTINEL
 };
 
@@ -6726,7 +6865,7 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             /* TCMTR and TLBTR exist in v8 but have no 64-bit versions */
             { .name = "TCMTR",
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 2,
-              .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = 0 },
+              .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = cpu->tcmtr },
             REGINFO_SENTINEL
         };
         /* TLBTR is specific to VMSA */
@@ -6916,6 +7055,13 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             sctlr.type |= ARM_CP_SUPPRESS_TB_END;
         }
         define_one_arm_cp_reg(cpu, &sctlr);
+    }
+
+    /* Features specific to DIGIC 2..5 (EOS) */
+    if (arm_feature(env, ARM_FEATURE_946EOS)) {
+        define_arm_cp_regs(cpu, eos_wfi_cp_reginfo);
+        define_arm_cp_regs(cpu, eos_lockdown_cp_reginfo);
+        define_arm_cp_regs(cpu, eos_tcm_cp_reginfo);
     }
 
     if (cpu_isar_feature(aa64_lor, cpu)) {
@@ -7809,7 +7955,7 @@ uint32_t arm_phys_excp_target_el(CPUState *cs, uint32_t excp_idx,
     return target_el;
 }
 
-void arm_log_exception(int idx)
+void arm_log_exception(int idx, CPUARMState *env)
 {
     if (qemu_loglevel_mask(CPU_LOG_INT)) {
         const char *exc = NULL;
@@ -7843,7 +7989,7 @@ void arm_log_exception(int idx)
         if (!exc) {
             exc = "unknown";
         }
-        qemu_log_mask(CPU_LOG_INT, "Taking exception %d [%s]\n", idx, exc);
+        qemu_log_mask(CPU_LOG_INT, "%08X: Taking exception %d [%s]\n", env->regs[15], idx, exc);
     }
 }
 
@@ -8090,13 +8236,19 @@ static void take_aarch32_exception(CPUARMState *env, int new_mode,
         env->thumb = (env->cp15.sctlr_el[2] & SCTLR_TE) != 0;
         env->elr_el[2] = env->regs[15];
     } else {
-        /*
-         * this is a lie, as there was no c1_sys on V4T/V5, but who cares
-         * and we should just guard the thumb mode on V4
-         */
-        if (arm_feature(env, ARM_FEATURE_V4T)) {
+        if (arm_feature(env, ARM_FEATURE_V6) ||
+            arm_feature(env, ARM_FEATURE_V7) ||
+            arm_feature(env, ARM_FEATURE_V8)) {
+            /* newer processors execute the interrupts in Thumb mode
+             * if the SCTLR TE bit is enabled */
             env->thumb =
                 (A32_BANKED_CURRENT_REG_GET(env, sctlr) & SCTLR_TE) != 0;
+        } else if (arm_feature(env, ARM_FEATURE_V4T)) {
+            /* there was no c1_sys on V4T/V5,
+             * and we should just guard the thumb mode on V4
+             * note: arm946eos uses the SCTLR TE bit for something else,
+             * so we can't assume this bit being always 0 on older platforms */
+            env->thumb = 0;
         }
         env->regs[14] = env->regs[15] + offset;
     }
@@ -8497,7 +8649,7 @@ void arm_cpu_do_interrupt(CPUState *cs)
 
     assert(!arm_feature(env, ARM_FEATURE_M));
 
-    arm_log_exception(cs->exception_index);
+    arm_log_exception(cs->exception_index, env);
     qemu_log_mask(CPU_LOG_INT, "...from EL%d to EL%d\n", arm_current_el(env),
                   new_el);
     if (qemu_loglevel_mask(CPU_LOG_INT)

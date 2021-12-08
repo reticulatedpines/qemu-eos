@@ -290,7 +290,7 @@ static void blkverify_refresh_filename(BlockDriverState *bs)
         && s->test_file->bs->exact_filename[0])
     {
         int ret = snprintf(bs->exact_filename, sizeof(bs->exact_filename),
-                           "blkverify:%s:%s",
+                           "blkverify:%.2000s:%.2000s",
                            bs->file->bs->exact_filename,
                            s->test_file->bs->exact_filename);
         if (ret >= sizeof(bs->exact_filename)) {

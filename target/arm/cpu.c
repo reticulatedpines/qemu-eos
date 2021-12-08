@@ -979,6 +979,7 @@ static void arm_cpu_initfn(Object *obj)
 static Property arm_cpu_reset_cbar_property =
             DEFINE_PROP_UINT64("reset-cbar", ARMCPU, reset_cbar, 0);
 
+/* fixme: how to change this property from machine code? */
 static Property arm_cpu_reset_hivecs_property =
             DEFINE_PROP_BOOL("reset-hivecs", ARMCPU, reset_hivecs, false);
 
@@ -1723,6 +1724,105 @@ static void arm926_initfn(Object *obj)
     cpu->isar.mvfr0 = FIELD_DP32(cpu->isar.mvfr0, MVFR0, FPSHVEC, 1);
     cpu->isar.mvfr0 = FIELD_DP32(cpu->isar.mvfr0, MVFR0, FPDP, 1);
 }
+ 
+static void arm946_eos_initfn(Object *obj)
+{
+    /* https://chdk.setepontos.com/index.php?topic=2139.msg19836#msg19836 */
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->dtb_compatible = "arm,arm946";
+    set_feature(&cpu->env, ARM_FEATURE_V5);
+    set_feature(&cpu->env, ARM_FEATURE_PMSA);
+    set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
+    cpu->midr        = 0x41059461;
+    cpu->ctr         = 0x0F112112;                /* DIGIC 5: 0x0F192192 */
+    cpu->tcmtr       = 0x000C00C0;
+    cpu->reset_sctlr = 0x00000078 | (1 << 13);    /* fixme: how to change the HIVECS property? */
+    set_feature(&cpu->env, ARM_FEATURE_946EOS);
+}
+
+static void arm946_eos5_initfn(Object *obj)
+{
+    /* mostly identical to DIGIC 2..4, with minor differences */
+    arm946_eos_initfn(obj);
+
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->ctr = 0x0F192192;
+}
+
+static void cortex_r5_initfn(Object *obj);
+
+static void cortex_r4_eos_initfn(Object *obj)
+{
+    /* Cortex R4: https://chdk.setepontos.com/index.php?topic=11316.msg124273#msg124273 */
+    cortex_r5_initfn(obj);
+
+    /* https://www.magiclantern.fm/forum/index.php?topic=17714.0 */
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->midr = 0x411FC143;
+    cpu->ctr = 0x8003C003;
+    cpu->tcmtr = 0x00010001;
+    cpu->id_mmfr3 = 0x00000011;
+    cpu->isar.id_isar0 = 0x01101111;
+    cpu->isar.id_isar2 = 0x21232131;
+    cpu->clidr = 0x09000003;
+    cpu->ccsidr[0] = 0xF00FE019;
+    cpu->ccsidr[1] = 0xF00FE019;
+    cpu->dbgdidr = 0x77040013;  /* https://www.magiclantern.fm/forum/index.php?topic=17360.msg202322#msg202322 */
+    cpu->reset_sctlr = 0x08E50878 | (1 << 13);    /* fixme: how to change the HIVECS property? */
+    //        1=MPU,        2=align,      4=DCacheL1,  8=SBO        => 8
+    //       10=SBO,       20=SBO,       40=SBO,      80=SBZ        => 7
+    //      100=SBZ,      200=SBZ,      400=SBZ,     800=Z(SBO)     => 8
+    //     1000=ICacheL1,2000=HIVECS,  4000=RR,     8000=SBZ        => 2 (1 << 13)
+    //    10000=SBO,    20000=BR,     40000=SBO,   80000=DZ         => 5
+    //   100000=SBZ,   200000=FI/SBO,400000=SBO,  800000=SBO        => E
+    //  1000000=VE,   2000000=EE,   4000000=SBZ, 8000000=NMFIQ      => 8
+    // 10000000=TRE, 20000000=AFE, 40000000=TE, 80000000=IE         => 0
+    // bic                0x20000   (disable background region)
+    // orr                    0x1   (enable MPU)
+    // bic              0x1002000   (disable HIVECS, VE?!)
+    // orr                   1004   (enable L1 DCache & ICache)
+    // ->reset_sctlr = 0x08E5187D;  /* as printed by CHDK cpuinfo running from bootloader */
+    cpu->reset_auxcr = 0x00000020;  /* ACTLR */
+    unset_feature(&cpu->env, ARM_FEATURE_V7MP);
+}
+
+static void cortex_a9_initfn(Object *obj);
+
+static void cortex_a9_eos_initfn(Object *obj)
+{
+    /* Cortex A9: http://chdk.setepontos.com/index.php?topic=13014.msg131110#msg131110 */
+    cortex_a9_initfn(obj);
+
+    /* https://www.magiclantern.fm/forum/index.php?topic=19737.msg200737#msg200737 */
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->midr = 0x414FC091;
+    cpu->ctr = 0x83338003;
+    cpu->id_pfr0 = 0x00001231;
+    cpu->id_pfr1 = 0x00000011;
+    cpu->id_dfr0 = 0x00010444;
+    cpu->id_mmfr3 = 0x00102111;
+    cpu->isar.id_isar4 = 0x00011142;
+    cpu->clidr = 0x09200003;
+    cpu->ccsidr[0] = 0x700FE019;
+    cpu->ccsidr[1] = 0x200FE019;
+    cpu->reset_sctlr = 0x08C50078;  /* best guess */
+    //        1=MMU,        2=align,      4=DCache,    8=SBO        => 8
+    //       10=SBO,       20=SBO,       40=SBO,      80=SBZ        => 7
+    //      100=SBZ,      200=SBZ,      400=SWP,     800=Z(BP)      => 0 
+    //     1000=ICache,  2000=HIVECS,  4000=RR,     8000=SBZ        => 0
+    //    10000=SBO,    20000=SBZ,    40000=SBO,   80000=SBZ        => 5
+    //   100000=SBZ,   200000=SBZ,   400000=SBO,  800000=SBO        => C
+    //  1000000=SBZ,  2000000=EE,   4000000=SBZ, 8000000=NMFIQ      => 8
+    // 10000000=TRE, 20000000=AFE, 40000000=TE, 80000000=SBZ        => 0
+    // bic              0x1003005   (disable MMU, DCache, ICache, HIVECS, ???)
+    // orr             0x40000800   (enable branch predictor and Thumb exceptions)
+    // orr                   1005   (enable MMU, DCache, ICache)
+    // ->reset_sctlr = 0x48C5187D;  /* as printed by CHDK cpuinfo running from bootloader */
+    cpu->reset_auxcr = 0x00000045;  /* ACTLR */
+    //cpu->actlr2    = 0x00000201;
+    //cpu->cpacr     = 0xC0000000;
+    //cpu->dbgdidr   = TODO;
+}
 
 static void arm946_initfn(Object *obj)
 {
@@ -2025,9 +2125,18 @@ static void arm_v7m_class_init(ObjectClass *oc, void *data)
 
 static const ARMCPRegInfo cortexr5_cp_reginfo[] = {
     /* Dummy the TCM region regs for the moment */
-    { .name = "ATCM", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1, .opc2 = 0,
+    /* fixme: resetvalue hardcoded for DIGIC 6 */
+    { .name = "ATCM",       .cp = 15, .opc1 = 0, .crn = 9,  .crm = 1, .opc2 = 1,
+      .access = PL1_RW,     .fieldoffset = offsetof(CPUARMState, cp15.c15_atcm), .resetvalue = 0x00000015 },
+    { .name = "BTCM",       .cp = 15, .opc1 = 0, .crn = 9,  .crm = 1, .opc2 = 0,
+      .access = PL1_RW,     .fieldoffset = offsetof(CPUARMState, cp15.c15_btcm), .resetvalue = 0x8000001D },
+    { .name = "BUILDOPTS",  .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = CP_ANY,
       .access = PL1_RW, .type = ARM_CP_CONST },
-    { .name = "BTCM", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1, .opc2 = 1,
+    { .name = "BUILDOPTS1", .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 0,
+      .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_OVERRIDE, .resetvalue = 0x00010000 },
+    { .name = "BUILDOPTS2", .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 1,
+      .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_OVERRIDE, .resetvalue = 0x00CFC010 },
+    { .name = "ACTLR2",     .cp = 15, .opc1 = 0, .crn = 15, .crm = 0, .opc2 = 0,
       .access = PL1_RW, .type = ARM_CP_CONST },
     { .name = "DCACHE_INVAL", .cp = 15, .opc1 = 0, .crn = 15, .crm = 5,
       .opc2 = 0, .access = PL1_W, .type = ARM_CP_NOP },
@@ -2544,6 +2653,8 @@ static const ARMCPUInfo arm_cpus[] = {
 #if !defined(CONFIG_USER_ONLY) || !defined(TARGET_AARCH64)
     { .name = "arm926",      .initfn = arm926_initfn },
     { .name = "arm946",      .initfn = arm946_initfn },
+    { .name = "arm946-eos",  .initfn = arm946_eos_initfn },
+    { .name = "arm946-eos5", .initfn = arm946_eos5_initfn },
     { .name = "arm1026",     .initfn = arm1026_initfn },
     /* What QEMU calls "arm1136-r2" is actually the 1136 r0p2, i.e. an
      * older core than plain "arm1136". In particular this does not
@@ -2559,6 +2670,7 @@ static const ARMCPUInfo arm_cpus[] = {
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-m4",   .initfn = cortex_m4_initfn,
                              .class_init = arm_v7m_class_init },
+    { .name = "cortex-r4-eos",.initfn = cortex_r4_eos_initfn },
     { .name = "cortex-m33",  .initfn = cortex_m33_initfn,
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
@@ -2566,6 +2678,7 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "cortex-a7",   .initfn = cortex_a7_initfn },
     { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
     { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
+    { .name = "cortex-a9-eos",.initfn = cortex_a9_eos_initfn },
     { .name = "cortex-a15",  .initfn = cortex_a15_initfn },
     { .name = "ti925t",      .initfn = ti925t_initfn },
     { .name = "sa1100",      .initfn = sa1100_initfn },

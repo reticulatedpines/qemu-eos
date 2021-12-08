@@ -954,7 +954,7 @@ static void blkdebug_refresh_filename(BlockDriverState *bs)
     }
 
     ret = snprintf(bs->exact_filename, sizeof(bs->exact_filename),
-                   "blkdebug:%s:%s",
+                   "blkdebug:%s:%.4085s",
                    s->config_file ?: "", bs->file->bs->exact_filename);
     if (ret >= sizeof(bs->exact_filename)) {
         /* An overflow makes the filename unusable, so do not report any */

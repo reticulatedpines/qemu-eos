@@ -41,7 +41,7 @@ static void digic_init(Object *obj)
                             &error_abort, NULL);
 
     for (i = 0; i < DIGIC4_NB_TIMERS; i++) {
-#define DIGIC_TIMER_NAME_MLEN    11
+#define DIGIC_TIMER_NAME_MLEN    20
         char name[DIGIC_TIMER_NAME_MLEN];
 
         snprintf(name, DIGIC_TIMER_NAME_MLEN, "timer[%d]", i);
