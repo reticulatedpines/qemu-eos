@@ -37,6 +37,8 @@
 
 #include "trace-tcg.h"
 
+#define LOG_ALL_CP_READS
+#define LOG_ALL_CP_WRITES
 
 #define ENABLE_ARCH_4T    arm_dc_feature(s, ARM_FEATURE_V4T)
 #define ENABLE_ARCH_5     arm_dc_feature(s, ARM_FEATURE_V5)
@@ -923,25 +925,101 @@ static inline void store_reg_from_load(DisasContext *s, int reg, TCGv_i32 var)
  */
 #if TARGET_LONG_BITS == 32
 
+/* fixme: should be moved to memory.c and accessed somehow from there? */
+/* fixme: use MemoryRegionOps? The read callback doesn't accept address and value */
+struct mem_log
+{
+    void (*read_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write);
+    void * read_arg;
+    void (*write_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write);
+    void * write_arg;
+} mem_log;
+
+void memory_set_access_logging_cb(
+    void (*mem_log_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write),
+    void * opaque, int access_mode)
+{
+    if (access_mode & PROT_READ) {
+        mem_log.read_cb = mem_log_cb;
+        mem_log.read_arg = opaque;
+    }
+    if (access_mode & PROT_WRITE) {
+        mem_log.write_cb = mem_log_cb;
+        mem_log.write_arg = opaque;
+    }
+}
+
+/* called from helper_log_ldr */
+void log_ldr_cb(uint32_t addr, uint32_t value, uint32_t opc)
+{
+    if (mem_log.read_cb) {
+        unsigned size = 1 << (opc & MO_SIZE);
+        mem_log.read_cb(mem_log.read_arg, addr, value, size, 0);
+    }
+}
+
+/* called from helper_log_str */
+void log_str_cb(uint32_t addr, uint32_t value, uint32_t opc)
+{
+    if (mem_log.write_cb) {
+        unsigned size = 1 << (opc & MO_SIZE);
+        mem_log.write_cb(mem_log.write_arg, addr, value, size, 1);
+    }
+}
+
+static inline void gen_log_ldr(TCGv_i32 addr, TCGv_i32 val, int opc)
+{
+    /* called after the actual LDR, to get the value too */
+    /* only compile the logging code if a CBR was registered */
+    if (mem_log.read_cb) {
+        TCGv_i32 opc_reg = tcg_temp_new_i32();
+        tcg_gen_movi_i32(opc_reg, opc);
+        gen_helper_log_ldr(addr, val, opc_reg);
+        tcg_temp_free_i32(opc_reg);
+    }
+}
+
+static inline void gen_log_str(TCGv_i32 addr, TCGv_i32 val, int opc)
+{
+    /* called before the actual STR */
+    /* only compile the logging code if a CBR was registered */
+    if (mem_log.write_cb) {
+        TCGv_i32 opc_reg = tcg_temp_new_i32();
+        tcg_gen_movi_i32(opc_reg, opc);
+        gen_helper_log_str(addr, val, opc_reg);
+        tcg_temp_free_i32(opc_reg);
+    }
+}
+
 #define DO_GEN_LD(SUFF, OPC)                                             \
 static inline void gen_aa32_ld##SUFF(TCGv_i32 val, TCGv_i32 addr, int index) \
 {                                                                        \
     tcg_gen_qemu_ld_i32(val, addr, index, OPC);                          \
+    gen_log_ldr(addr, val, OPC);                                         \
 }
 
 #define DO_GEN_ST(SUFF, OPC)                                             \
 static inline void gen_aa32_st##SUFF(TCGv_i32 val, TCGv_i32 addr, int index) \
 {                                                                        \
+    gen_log_str(addr, val, OPC);                                         \
     tcg_gen_qemu_st_i32(val, addr, index, OPC);                          \
 }
 
 static inline void gen_aa32_ld64(TCGv_i64 val, TCGv_i32 addr, int index)
 {
+    if (mem_log.read_cb) {
+        /* not implemented */
+        assert(0);
+    }
     tcg_gen_qemu_ld_i64(val, addr, index, MO_TEQ);
 }
 
 static inline void gen_aa32_st64(TCGv_i64 val, TCGv_i32 addr, int index)
 {
+    if (mem_log.write_cb) {
+        /* not implemented */
+        assert(0);
+    }
     tcg_gen_qemu_st_i64(val, addr, index, MO_TEQ);
 }
 
@@ -7222,6 +7300,27 @@ static int disas_coproc_insn(DisasContext *s, uint32_t insn)
         /* Handle special cases first */
         switch (ri->type & ~(ARM_CP_FLAG_MASK & ~ARM_CP_SPECIAL)) {
         case ARM_CP_NOP:
+            #if defined(LOG_ALL_CP_READS) || defined(LOG_ALL_CP_WRITES)
+            if (!is64) {
+                /* log all reads to coprocessor registers (32-bit) */
+                TCGv_ptr tmpptr;
+                TCGv_i32 tmp;
+                tmpptr = tcg_const_ptr(ri);
+                if (isread) {
+                    #ifdef LOG_ALL_CP_READS
+                    tmp = load_cpu_offset(ri->fieldoffset);
+                    gen_helper_print_get_cp_reg(cpu_env, tmpptr, tmp);
+                    #endif
+                } else {
+                    #ifdef LOG_ALL_CP_WRITES
+                    tmp = load_reg(s, rt);
+                    gen_helper_print_set_cp_reg(cpu_env, tmpptr, tmp);
+                    #endif
+                }
+                tcg_temp_free_ptr(tmpptr);
+                tcg_temp_free_i32(tmp);
+            }
+            #endif
             return 0;
         case ARM_CP_WFI:
             if (isread) {
@@ -7276,6 +7375,15 @@ static int disas_coproc_insn(DisasContext *s, uint32_t insn)
                 } else {
                     tmp = load_cpu_offset(ri->fieldoffset);
                 }
+
+                #ifdef LOG_ALL_CP_READS
+                /* log all reads to coprocessor registers (32-bit) */
+                TCGv_ptr tmpptr;
+                tmpptr = tcg_const_ptr(ri);
+                gen_helper_print_get_cp_reg(cpu_env, tmpptr, tmp);
+                tcg_temp_free_ptr(tmpptr);
+                #endif
+
                 if (rt == 15) {
                     /* Destination register of r15 for 32 bit loads sets
                      * the condition codes from the high 4 bits of the value
@@ -7287,6 +7395,19 @@ static int disas_coproc_insn(DisasContext *s, uint32_t insn)
                 }
             }
         } else {
+            #ifdef LOG_ALL_CP_WRITES
+            if (!is64) {
+                /* log all writes to coprocessor registers (32-bit) */
+                TCGv_i32 tmp;
+                TCGv_ptr tmpptr;
+                tmp = load_reg(s, rt);
+                tmpptr = tcg_const_ptr(ri);
+                gen_helper_print_set_cp_reg(cpu_env, tmpptr, tmp);
+                tcg_temp_free_ptr(tmpptr);
+                tcg_temp_free_i32(tmp);
+            }
+            #endif
+            
             /* Write */
             if (ri->type & ARM_CP_CONST) {
                 /* If not forbidden by access permissions, treat as WI */

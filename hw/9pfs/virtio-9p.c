@@ -22,6 +22,7 @@
 #include "virtio-9p-coth.h"
 #include "trace.h"
 #include "migration/migration.h"
+#include <sys/sysmacros.h>
 
 int open_fd_hw;
 int total_open_fd;

@@ -87,7 +87,7 @@
 
 #define READ_BUF_LEN 4096
 #define READ_RETRIES 10
-#define CHR_MAX_FILENAME_SIZE 256
+#define CHR_MAX_FILENAME_SIZE 4096
 #define TCP_MAX_FDS 16
 
 /***********************************************************/

@@ -72,7 +72,7 @@ static const char * const excnames[] = {
     [EXCP_SEMIHOST] = "Semihosting call",
 };
 
-static inline void arm_log_exception(int idx)
+static inline void arm_log_exception(int idx, CPUARMState *env)
 {
     if (qemu_loglevel_mask(CPU_LOG_INT)) {
         const char *exc = NULL;
@@ -83,7 +83,7 @@ static inline void arm_log_exception(int idx)
         if (!exc) {
             exc = "unknown";
         }
-        qemu_log_mask(CPU_LOG_INT, "Taking exception %d [%s]\n", idx, exc);
+        qemu_log_mask(CPU_LOG_INT, "%08X: Taking exception %d [%s]\n", env->regs[15], idx, exc);
     }
 }
 

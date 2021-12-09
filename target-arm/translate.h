@@ -151,4 +151,8 @@ void arm_free_cc(DisasCompare *cmp);
 void arm_jump_cc(DisasCompare *cmp, TCGLabel *label);
 void arm_gen_test_cc(int cc, TCGLabel *label);
 
+/* fixme: duplicate declaration in op_helper.c */
+void log_ldr_cb(uint32_t addr, uint32_t value, uint32_t opc);
+void log_str_cb(uint32_t addr, uint32_t value, uint32_t opc);
+
 #endif /* TARGET_ARM_TRANSLATE_H */

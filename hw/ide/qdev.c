@@ -245,7 +245,8 @@ static void ide_dev_instance_init(Object *obj)
 
 static int ide_hd_initfn(IDEDevice *dev)
 {
-    return ide_dev_initfn(dev, IDE_HD);
+    /* fixme: forcing IDE type to IDE_CFATA (was ID_HD) */
+    return ide_dev_initfn(dev, IDE_CFATA);
 }
 
 static int ide_cd_initfn(IDEDevice *dev)

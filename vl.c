@@ -4102,7 +4102,7 @@ int main(int argc, char **argv, char **envp)
     }
 
     if (log_mask) {
-        int mask;
+        uint64_t mask;
         mask = qemu_str_to_log_mask(log_mask);
         if (!mask) {
             qemu_print_log_usage(stdout);

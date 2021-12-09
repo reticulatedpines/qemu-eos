@@ -1479,6 +1479,9 @@ static void sd_blk_write(SDState *sd, uint64_t addr, uint32_t len)
 {
     uint64_t end = addr + len;
 
+    DPRINTF("sd_blk_write: addr = 0x%08llx, len = %d\n",
+            (unsigned long long) addr, len);
+
     if ((addr & 511) || len < 512)
         if (!sd->blk || blk_read(sd->blk, addr >> 9, sd->buf, 1) < 0) {
             fprintf(stderr, "sd_blk_write: read error on host side\n");

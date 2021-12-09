@@ -64,9 +64,14 @@ DEF_HELPER_2(v7m_mrs, i32, env, i32)
 
 DEF_HELPER_3(access_check_cp_reg, void, env, ptr, i32)
 DEF_HELPER_3(set_cp_reg, void, env, ptr, i32)
+DEF_HELPER_3(print_set_cp_reg, void, env, ptr, i32)
+DEF_HELPER_3(print_get_cp_reg, void, env, ptr, i32)
 DEF_HELPER_2(get_cp_reg, i32, env, ptr)
 DEF_HELPER_3(set_cp_reg64, void, env, ptr, i64)
 DEF_HELPER_2(get_cp_reg64, i64, env, ptr)
+
+DEF_HELPER_3(log_ldr, void, i32, i32, i32)
+DEF_HELPER_3(log_str, void, i32, i32, i32)
 
 DEF_HELPER_3(msr_i_pstate, void, env, i32, i32)
 DEF_HELPER_1(clear_pstate_ss, void, env)

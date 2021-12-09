@@ -141,6 +141,7 @@ typedef struct ARMCPU {
     uint32_t mvfr1;
     uint32_t mvfr2;
     uint32_t ctr;
+    uint32_t tcmtr;
     uint32_t reset_sctlr;
     uint32_t id_pfr0;
     uint32_t id_pfr1;

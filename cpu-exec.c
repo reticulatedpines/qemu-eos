@@ -31,6 +31,7 @@
 #include "hw/i386/apic.h"
 #endif
 #include "sysemu/replay.h"
+#include "hw/boards.h"
 
 /* -icount align implementation. */
 
@@ -332,6 +333,16 @@ static void cpu_handle_debug_exception(CPUState *cpu)
     cc->debug_excp_handler(cpu);
 }
 
+static void (*tb_exec_cb)(void *opaque, CPUState *cpu, TranslationBlock *tb);
+static void * tb_exec_opaque;
+
+void cpu_set_tb_exec_cb(void (*cb)(void *opaque, CPUState *cpu, TranslationBlock *tb),
+                        void *opaque)
+{
+    tb_exec_cb = cb;
+    tb_exec_opaque = opaque;
+}
+
 /* main execution loop */
 
 int cpu_exec(CPUState *cpu)
@@ -500,8 +511,28 @@ int cpu_exec(CPUState *cpu)
                     tcg_ctx.tb_ctx.tb_invalidated_flag = 0;
                 }
                 if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
+#if defined(TARGET_ARM)
+                    /* rather than logging just PC, also log the disassembled code */
+                    if (!singlestep) {
+                        /* separate translation blocks by newlines */
+                        qemu_log("\n");
+                    }
+                    /* some instructions are printed more than once, not sure why */
+                    static int prev_pc = -1;
+                    if (tb->pc != prev_pc) {
+                        prev_pc = tb->pc;
+                        if (CPU_NEXT(first_cpu)) {
+                            qemu_log("[CPU%d] ", current_cpu->cpu_index);
+                        }
+                        log_target_disas(cpu, tb->pc, tb->size, 0);
+                    }
+#else
                     qemu_log("Trace %p [" TARGET_FMT_lx "] %s\n",
                              tb->tc_ptr, tb->pc, lookup_symbol(tb->pc));
+#endif
+                }
+                if (tb_exec_cb) {
+                    tb_exec_cb(tb_exec_opaque, cpu, tb);
                 }
                 /* see if we can patch the calling TB. When the TB
                    spans two pages, we cannot safely do a direct

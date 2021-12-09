@@ -389,6 +389,9 @@ typedef struct CPUARMState {
         uint64_t pmccfiltr_el0; /* Performance Monitor Filter Register */
         uint64_t vpidr_el2; /* Virtualization Processor ID Register */
         uint64_t vmpidr_el2; /* Virtualization Multiprocessor ID Register */
+
+        uint32_t c15_atcm;
+        uint32_t c15_btcm;
     } cp15;
 
     struct {
@@ -912,6 +915,7 @@ enum arm_features {
     ARM_FEATURE_V8_SHA256, /* implements SHA256 part of v8 Crypto Extensions */
     ARM_FEATURE_V8_PMULL, /* implements PMULL part of v8 Crypto Extensions */
     ARM_FEATURE_THUMB_DSP, /* DSP insns supported in the Thumb encodings */
+    ARM_FEATURE_946EOS,    /* EOS-specific (DIGIC 2...5) */
 };
 
 static inline int arm_feature(CPUARMState *env, int feature)

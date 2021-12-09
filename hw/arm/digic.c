@@ -36,7 +36,7 @@ static void digic_init(Object *obj)
     object_property_add_child(obj, "cpu", OBJECT(&s->cpu), NULL);
 
     for (i = 0; i < DIGIC4_NB_TIMERS; i++) {
-#define DIGIC_TIMER_NAME_MLEN    11
+#define DIGIC_TIMER_NAME_MLEN    20
         char name[DIGIC_TIMER_NAME_MLEN];
 
         object_initialize(&s->timer[i], sizeof(s->timer[i]), TYPE_DIGIC_TIMER);

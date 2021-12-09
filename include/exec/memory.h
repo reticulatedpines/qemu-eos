@@ -1356,6 +1356,19 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
                          int is_write, hwaddr access_len);
 
 
+/* memory_set_access_logging_cb: allow logging guest memory accesses
+ * using callbacks.
+ * 
+ * Currently implemented only for ARM 32-bit (LDR/STR).
+ * 
+ * @mem_log_cb: callback to be called when memory access takes place
+ * @opaque: argument passed to mem_log_cb
+ * @access_mode: bit field (PROT_READ, PROT_WRITE); fixme - better constants? define new ones?
+ */
+void memory_set_access_logging_cb(
+    void (*mem_log_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write),
+    void * opaque, int access_mode);
+
 #endif
 
 #endif

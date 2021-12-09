@@ -22,7 +22,7 @@
 
 static char *logfilename;
 FILE *qemu_logfile;
-int qemu_loglevel;
+uint64_t qemu_loglevel;
 static int log_append = 0;
 
 void qemu_log(const char *fmt, ...)
@@ -36,7 +36,7 @@ void qemu_log(const char *fmt, ...)
     va_end(ap);
 }
 
-void qemu_log_mask(int mask, const char *fmt, ...)
+void qemu_log_mask(uint64_t mask, const char *fmt, ...)
 {
     va_list ap;
 
@@ -48,7 +48,7 @@ void qemu_log_mask(int mask, const char *fmt, ...)
 }
 
 /* enable or disable low levels log */
-void do_qemu_set_log(int log_flags, bool use_own_buffers)
+void do_qemu_set_log(uint64_t log_flags, bool use_own_buffers)
 {
     qemu_loglevel = log_flags;
     if (qemu_loglevel && !qemu_logfile) {
@@ -99,7 +99,7 @@ const QEMULogItem qemu_log_items[] = {
       "show micro ops for each compiled TB" },
     { CPU_LOG_TB_OP_OPT, "op_opt",
       "show micro ops (x86 only: before eflags optimization) and\n"
-      "after liveness analysis" },
+      "           after liveness analysis" },
     { CPU_LOG_INT, "int",
       "show interrupts/exceptions in short format" },
     { CPU_LOG_EXEC, "exec",
@@ -116,10 +116,67 @@ const QEMULogItem qemu_log_items[] = {
       "log unimplemented functionality" },
     { LOG_GUEST_ERROR, "guest_errors",
       "log when the guest OS does something invalid (eg accessing a\n"
-      "non-existent register)" },
+      "           non-existent register)" },
     { CPU_LOG_TB_NOCHAIN, "nochain",
       "do not chain compiled TBs so that \"exec\" and \"cpu\" show\n"
-      "complete traces" },
+      "           complete traces; implies -singlestep" },
+      
+    { EOS_LOG_IO | CPU_LOG_TB_NOCHAIN, "io",
+      "EOS: log low-level I/O activity (implies nochain,singlestep)" },
+    { EOS_LOG_IO, "io_quick",
+      "EOS: log low-level I/O activity (without nochain,singlestep; PC not exact)" },
+    { EOS_LOG_IO_LOG | EOS_LOG_IO | CPU_LOG_TB_NOCHAIN, "io_log",
+      "EOS: for every I/O read, export a mmio_log entry to use in dm-spy-extra.c\n"
+      "                (dm-spy-experiments branch) to see the values from physical hardware." },
+    { EOS_LOG_MPU, "mpu",
+      "EOS: log low-level MPU activity" },
+    { EOS_LOG_SFLASH, "sflash",
+      "EOS: log low-level serial flash activity" },
+    { EOS_LOG_SDCF, "sdcf",
+      "EOS: log low-level SD/CF activity" },
+    { EOS_LOG_UART, "uart",
+      "EOS: log low-level UART activity" },
+
+    { EOS_PR(EOS_LOG_RAM) | EOS_LOG_RAM, "ram",
+      "EOS: log all RAM reads and writes" },
+    { EOS_PR(EOS_LOG_ROM) | EOS_LOG_ROM, "rom",
+      "EOS: log all ROM reads and writes" },
+    { EOS_PR(EOS_LOG_RAM_R) | EOS_LOG_RAM_R, "ramr",
+      "EOS: log all RAM reads" },
+    { EOS_PR(EOS_LOG_ROM_R) | EOS_LOG_ROM_R, "romr",
+      "EOS: log all ROM reads" },
+    { EOS_PR(EOS_LOG_RAM_W) | EOS_LOG_RAM_W, "ramw",
+      "EOS: log all RAM writes" },
+    { EOS_PR(EOS_LOG_ROM_W) | EOS_LOG_ROM_W, "romw",
+      "EOS: log all ROM writes" },
+    { EOS_LOG_RAM_DBG | EOS_LOG_RAM, "ram_dbg",
+      "EOS: self-test for the RAM logging routines" },
+
+    { EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN, "callstack",
+      "EOS: reconstruct call stack (implies nochain,singlestep)" },
+    { EOS_LOG_CALLS | EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN | EOS_LOG_RAM_R, "calls",
+      "EOS: log function calls (implies callstack,nochain,singlestep; monitors RAM reads)" },
+    { EOS_LOG_NO_TAIL_CALLS, "notail",
+      "EOS: don't identify tail calls (for troubleshooting)" },
+    { EOS_LOG_IDC | EOS_LOG_CALLSTACK | CPU_LOG_TB_NOCHAIN, "idc",
+      "EOS: export called functions to IDA (implies callstack,nochain,singlestep)" },
+    { EOS_LOG_TASKS, "tasks",
+      "EOS: log task switches (.current_task_addr must be defined)" },
+    { EOS_LOG_DEBUGMSG, "debugmsg",
+      "EOS: log DebugMsg calls (QEMU_EOS_DEBUGMSG must be defined)" },
+    { EOS_LOG_ROMCPY | EOS_LOG_ROM_R | EOS_LOG_RAM_W, "romcpy",
+      "EOS: find memory blocks copied from ROM to RAM" },
+
+    { EOS_LOG_RAM_MEMCHK | EOS_LOG_RAM, "memchk",
+      "EOS: check memory usage (malloc/free, uninitialized values)" },
+
+    { EOS_LOG_AUTOEXEC, "autoexec",
+      "EOS: start verbose logging when autoexec.bin is loaded (quiet logging for bootloader)" },
+
+    { EOS_LOG_VERBOSE, "v", "" },
+    { EOS_LOG_VERBOSE, "verbose",
+      "EOS: very detailed debug messages" },
+
     { 0, NULL, NULL },
 };
 
@@ -132,10 +189,10 @@ static int cmp1(const char *s1, int n, const char *s2)
 }
 
 /* takes a comma separated list of log masks. Return 0 if error. */
-int qemu_str_to_log_mask(const char *str)
+uint64_t qemu_str_to_log_mask(const char *str)
 {
     const QEMULogItem *item;
-    int mask;
+    uint64_t mask;
     const char *p, *p1;
 
     p = str;

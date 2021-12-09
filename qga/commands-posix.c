@@ -13,6 +13,7 @@
 
 #include <glib.h>
 #include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>

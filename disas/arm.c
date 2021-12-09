@@ -2826,9 +2826,9 @@ print_insn_arm_internal (bfd_vma pc, struct disassemble_info *info, long given)
 		      if ((given & 0x02000000) != 0)
 			{
 			  int rotate = (given & 0xf00) >> 7;
-			  int immed = (given & 0xff);
-			  immed = (((immed << (32 - rotate))
-				    | (immed >> rotate)) & 0xffffffff);
+			  int64_t immed64 = (given & 0xff);
+			  int immed = (((immed64 << (32 - rotate))
+				      | (immed64 >> rotate)) & 0xffffffff);
 			  func (stream, "#%d\t; 0x%x", immed, immed);
 			}
 		      else
@@ -3868,7 +3868,7 @@ int
 print_insn_arm (bfd_vma pc, struct disassemble_info *info)
 {
   unsigned char b[4];
-  long		given;
+  unsigned long given;
   int           status;
   int           is_thumb = false;
   int           is_data = false;

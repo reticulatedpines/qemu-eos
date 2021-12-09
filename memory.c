@@ -1761,7 +1761,7 @@ static void memory_region_update_container_subregions(MemoryRegion *subregion)
                          int128_make64(other->addr))) {
             continue;
         }
-#if 0
+#if 1
         printf("warning: subregion collision %llx/%llx (%s) "
                "vs %llx/%llx (%s)\n",
                (unsigned long long)offset,
@@ -1798,6 +1798,9 @@ void memory_region_add_subregion(MemoryRegion *mr,
                                  hwaddr offset,
                                  MemoryRegion *subregion)
 {
+    fprintf(stderr, "%08X - %08X: %s\n",
+                     (int)offset, (int)offset + (int)subregion->size.lo - 1,
+                     subregion->name);
     subregion->may_overlap = false;
     subregion->priority = 0;
     memory_region_add_subregion_common(mr, offset, subregion);
