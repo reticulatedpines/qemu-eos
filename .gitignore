@@ -69,6 +69,9 @@
 /vhost-user-gpu
 /vhost-user-input
 /fsdev/virtfs-proxy-helper
+.*.swp
+magiclantern/qemu_?.zip
+magiclantern/docker_builder/qemu_src_?.tar
 *.tmp
 *.[1-9]
 *.a
