@@ -79,13 +79,12 @@ def parse_args():
                         help="Name of model to emulate, required")
 
     parser.add_argument("-b", "--qemu_build_dir",
-                        default=os.path.realpath(os.path.join(script_dir,
-                                                 "..", "..", "qemu-eos-build")),
+                        default=os.path.realpath(script_dir),
                         help="build dir for ML Qemu, default: %(default)s")
 
     parser.add_argument("-r", "--rom_dir",
                         default=os.path.realpath(os.path.join(script_dir,
-                                                              "..", "..", "roms")),
+                                                              "..", "roms")),
                         help="location of roms, default: %(default)s")
 
     args = parser.parse_args()
