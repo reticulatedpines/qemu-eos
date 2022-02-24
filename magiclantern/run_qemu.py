@@ -3,57 +3,19 @@
 import os
 import argparse
 import subprocess
+import sys
 
+from ml_qemu.run import QemuRunner, QemuRunnerError
 
 def main():
     args = parse_args()
 
     try:
-        run_qemu(args.qemu_build_dir, args.rom_dir, args.model)
+        with QemuRunner(args.qemu_build_dir, args.rom_dir, args.model) as q:
+            q.wait()
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
-        exit(-1)
-
-
-class QemuRunnerError(Exception):
-    pass
-
-
-def run_qemu(build_dir, rom_dir, cam):
-    # TODO:
-    # handle QEMU_EOS_DEBUGMSG,
-    # allow selecting drive images,
-    # supporting appending QEMU_JOB_ID to monitor socket
-    #   (needed for qemu testing I think so not urgent),
-    # ensure Qemu test suite works in the same way with this vs run_canon_fw.sh,
-    # handle passing other args, e.g. -d romcpy
-    # support selecting non-boot (currently, -M CAM,firmware=boot=0, a better way
-    #   would be creating a proper qemu option group)
-    # add disk image xz to qemu-eos repo and get build system (or something)
-    #   to unzip these into qemu-eos-build/disk_images/
-    monitor_socket = "qemu.monitor"
-    qemu_command = [os.path.join(build_dir, "arm-softmmu", "qemu-system-arm"),
-                    "-drive", "if=sd,format=raw,file=" +
-                            os.path.join(build_dir, "disk_images", "sd.img"),
-                    "-drive", "if=ide,format=raw,file=" +
-                            os.path.join(build_dir, "disk_images", "cf.img"),
-                    "-chardev", "socket,server,nowait,path=" + monitor_socket + ",id=monsock",
-                    "-mon", "chardev=monsock,mode=readline",
-                    "-name", cam,
-                    "-M", cam,
-                    ]
-    qemu_env = os.environ
-    # FIXME remove QEMU_EOS_WORKDIR and make it a proper qemu CLI option
-    qemu_env["QEMU_EOS_WORKDIR"] = rom_dir
-    try:
-        res = subprocess.run(qemu_command,
-                             env=qemu_env,
-                             check=True,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE)
-    except subprocess.CalledProcessError:
-        os.remove(monitor_socket)
-        raise
+        sys.exit(-1)
 
 
 def parse_args():
@@ -78,7 +40,7 @@ def parse_args():
                         choices=known_cams,
                         help="Name of model to emulate, required")
 
-    parser.add_argument("-b", "--qemu_build_dir",
+    parser.add_argument("-q", "--qemu_build_dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                  "..", "..", "qemu-eos-build")),
                         help="build dir for ML Qemu, default: %(default)s")
@@ -102,7 +64,7 @@ def parse_args():
             raise QemuRunnerError("Rom dir didn't exist.")
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
-        exit(-1)
+        sys.exit(-1)
 
     return args
 

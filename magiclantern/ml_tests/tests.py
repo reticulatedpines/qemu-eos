@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 
 from abc import ABC
+import os
+from time import sleep
 
 import vncdotool
 from vncdotool import api
-from .. import ml_qemu
+
+import socket
+
+from ml_qemu.run import QemuRunner
 
 class TestError(Exception):
     pass
@@ -23,9 +28,9 @@ class Test(ABC):
         self.job_ID = job_ID
         self.gdb_port = 1234 + job_ID
         self.vnc_port = 12345 + job_ID
-        self.qemu_monitor_path = "qemu.monitor" + str(job_ID)
-        self.vnc_client = vncdotool.api.connect("localhost::" + 
-                                                str(self.vnc_port))
+        self.vnc_display = ":" + str(self.vnc_port)
+        self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
+        self.vnc_client = vncdotool.api.connect(self.vnc_display)
 
     def run(self):
         pass
@@ -58,8 +63,22 @@ class MenuTest(Test):
         except KeyError:
             raise TestError("Unknown rom with MD5 sum: %s" % 
                             self.cam.code_rom_md5)
-#        self.start_qemu()
-        for k in key_sequence:
-            print(k)
+
+        with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.model,
+                        monitor_socket_path=self.qemu_monitor_path,
+                        vnc_display=self.vnc_display) as q:
+            sleep(0.5) # give time for qemu to start
+
+            for k in key_sequence:
+                print(k)
+            #self.vnc_client.keyPress()
+            self.vnc_client.captureScreen("test.png")
+            sleep(3)
+
+            # attempt clean shutdown via Qemu monitor socket
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.connect(self.qemu_monitor_path)
+            s.send(b"system_powerdown\n");
+            sleep(2)
 
 

@@ -54,6 +54,7 @@ class Cam(object):
         with open(rom1_path, "rb") as f:
             self.rom1_md5 = hashlib.md5(f.read()).hexdigest()
 
+        # determine Digic version
         if cam in {"50D", "7D", "60D", "500D", "550D", "600D",
                    "1100D", "1200D", "1300D", "2000D", "4000D",
                    "5D2"}:
@@ -71,6 +72,7 @@ class Cam(object):
         else:
             raise CamError("Fix laziness: mapping cam name to Digic version")
 
+        # choose which is code rom
         if self.digic_version in [4, 5]:
             self.code_rom_md5 = self.rom1_md5
         elif self.digic_version in [7, 8, 10]:
@@ -80,6 +82,7 @@ class Cam(object):
 
         # set camera traits
         self.model = cam
+        self.rom_dir = os.path.realpath(rom_dir)
         self.can_emulate_gui = True if cam in self.gui_cams else False
         self.has_sd = True if cam in self.sd_cams else False
         self.has_cf = True if cam in self.cf_cams else False
