@@ -10,10 +10,11 @@ import ml_tests
 def main():
     args = parse_args()
 
-    suite = ml_tests.test_suite.TestSuite(args.cams,
-                                          args.rom_dir,
-                                          args.tests,
-                                          args.fail_early)
+    suite = ml_tests.test_suite.TestSuite(cams=args.cams,
+                                          rom_dir=args.rom_dir,
+                                          qemu_dir=args.qemu_dir,
+                                          test_names=args.tests,
+                                          fail_early=args.fail_early)
 
     # A test suite holds cams, each cam holds the
     # tests that are valid for itself.  The suite object
@@ -58,7 +59,7 @@ def parse_args():
                         default=default_rom_dir,
                         help="Location of dir holding rom subdirs, default: %(default)s")
 
-    default_qemu_dir = os.path.realpath(os.path.join(".."))
+    default_qemu_dir = os.path.realpath(os.path.join("..", "..", "qemu-eos-build"))
     parser.add_argument("-q", "--qemu-dir",
                         default=default_qemu_dir,
                         help="Location of dir holding qemu-eos install, default: %(default)s")
