@@ -4,9 +4,6 @@ from abc import ABC
 import os
 from time import sleep
 
-import vncdotool
-from vncdotool import api
-
 from ml_qemu.run import QemuRunner
 
 class TestError(Exception):
@@ -28,7 +25,6 @@ class Test(ABC):
         self.vnc_port = 12345 + job_ID
         self.vnc_display = ":" + str(self.vnc_port)
         self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
-        self.vnc_client = vncdotool.api.connect(self.vnc_display)
 
     def run(self):
         pass
@@ -72,14 +68,9 @@ class MenuTest(Test):
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.model,
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display) as q:
-            sleep(1.5) # give time for qemu to start
-
-            for n, k in enumerate(key_sequence):
-                self.vnc_client.keyPress(k)
-                sleep(0.1)
-                self.vnc_client.captureScreen("menu_test_" + str(n).zfill(2) +
-                                              ".png")
-                sleep(0.1)
+            q.screen_cap_prefix = "menu_test_"
+            for k in key_sequence:
+                q.key_press(k)
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()

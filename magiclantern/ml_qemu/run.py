@@ -6,6 +6,8 @@ import subprocess
 from time import sleep
 import socket
 
+import vncdotool
+from vncdotool import api
 
 class QemuRunnerError(Exception):
     pass
@@ -45,6 +47,9 @@ class QemuRunner:
         # check for disk_images subdir, fail gracefully,
         # check for model specific rom subdir, fail gracefully
         self.rom_dir = rom_dir
+        # FIXME make this a class property, can't remember syntax right now
+        self.screen_cap_prefix = "test_"
+        self.screen_cap_counter = 0
         if monitor_socket_path:
             self.monitor_socket_path = monitor_socket_path
         else:
@@ -66,9 +71,12 @@ class QemuRunner:
                              "-M", model,
                             ]
 
+        self.vnc_display = vnc_display
         if vnc_display:
             self.qemu_command.extend(["-vnc", vnc_display])
-        self.vnc_display = vnc_display
+            self.vnc_client = vncdotool.api.connect(self.vnc_display)
+        else:
+            self.vnc_client = None
 
     def __enter__(self):
         qemu_env = os.environ
@@ -82,6 +90,11 @@ class QemuRunner:
                                              env=qemu_env,
                                              stdin=subprocess.PIPE,
                                              stdout=subprocess.PIPE)
+        # TODO: bit hackish, but we give some time for Qemu
+        # to start.  This prevents problems with VNC access
+        # happening before Qemu is up.  There should be a more
+        # graceful way.  Check status via monitor socket possibly?
+        sleep(1.5)
         return self
 
     def __exit__(self, *args):
@@ -102,4 +115,25 @@ class QemuRunner:
         else:
             s.send(b"system_powerdown\n")
         sleep(2)
+
+    def key_press(self, key, capture_screen=True):
+        """
+        Use VNC to press a key in the VM, and by default,
+        capture the screen a short time afterwards.
+        """
+        self.vnc_client.keyPress(key)
+        if capture_screen:
+            self.capture_screen()
+
+    def capture_screen(self):
+        """
+        Capture VM screen via VNC.
+        """
+        sleep(0.1)
+        n = self.screen_cap_counter
+        self.screen_cap_counter += 1
+        self.vnc_client.captureScreen(self.screen_cap_prefix
+                                      + str(n).zfill(2)
+                                      + ".png")
+        sleep(0.1)
 
