@@ -52,8 +52,14 @@ class MenuTest(Test):
     # If you have a new ROM, you'll need to determine a new sequence
     # (if you're lucky, an existing rom will be close and can be
     # adapted).
-    qemu_key_sequences = {"424545a5cfe10b1a5d8cefffe9fe5297":
-                            ["m", "l"]}
+    qemu_key_sequences = {
+                "424545a5cfe10b1a5d8cefffe9fe5297":
+                ["m", "l", "l", "m", "right", "right", "right", "right",
+                 "right", "right", "right", "right", "right", # cycle through all menus
+                 "up", "up", "space", "down", "space", # check sub-menus work, turn beep off
+                 "right", "up", "up", "space", "pgdn", "space", # check wheel controls using Expo Comp sub-menu
+                ]
+                }
     def run(self):
         print("MenuTest starting on %s %s" % 
               (self.cam.model, self.cam.code_rom_md5))
@@ -64,16 +70,18 @@ class MenuTest(Test):
             raise TestError("Unknown rom with MD5 sum: %s" % 
                             self.cam.code_rom_md5)
 
+        # invoke qemu and control it to run the test
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.model,
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display) as q:
-            sleep(0.5) # give time for qemu to start
+            sleep(1.5) # give time for qemu to start
 
-            for k in key_sequence:
-                print(k)
-            #self.vnc_client.keyPress()
-            self.vnc_client.captureScreen("test.png")
-            sleep(3)
+            for n, k in enumerate(key_sequence):
+                self.vnc_client.keyPress(k)
+                sleep(0.1)
+                self.vnc_client.captureScreen("menu_test_" + str(n).zfill(2) +
+                                              ".png")
+                sleep(0.1)
 
             # attempt clean shutdown via Qemu monitor socket
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
