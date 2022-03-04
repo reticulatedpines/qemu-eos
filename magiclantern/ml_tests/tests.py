@@ -7,8 +7,6 @@ from time import sleep
 import vncdotool
 from vncdotool import api
 
-import socket
-
 from ml_qemu.run import QemuRunner
 
 class TestError(Exception):
@@ -84,9 +82,6 @@ class MenuTest(Test):
                 sleep(0.1)
 
             # attempt clean shutdown via Qemu monitor socket
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.connect(self.qemu_monitor_path)
-            s.send(b"system_powerdown\n");
-            sleep(2)
+            q.shutdown()
 
 
