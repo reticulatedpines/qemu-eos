@@ -49,8 +49,8 @@ class Cam(object):
 
         rom1_path = os.path.join(rom_subdir, "ROM1.BIN")
         if not os.path.isfile(rom1_path):
-            raise CamError("Couldn't find ROM0: %s" % rom1_path)
-        self.rom1_path = rom0_path
+            raise CamError("Couldn't find ROM1: %s" % rom1_path)
+        self.rom1_path = rom1_path
         with open(rom1_path, "rb") as f:
             self.rom1_md5 = hashlib.md5(f.read()).hexdigest()
 
