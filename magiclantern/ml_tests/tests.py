@@ -16,8 +16,12 @@ class Test(ABC):
     giving a common interface.
 
     run() does the actual work.
+
+    Is a context manager, which handles changing dir
+    and restoring directory state when the test ends.
+    Should be used via "with".
     """
-    def __init__(self, cam, qemu_dir, job_ID=0):
+    def __init__(self, cam, qemu_dir, test_dir, job_ID=0):
         self.cam = cam
         self.qemu_dir = qemu_dir
         self.job_ID = job_ID
@@ -25,9 +29,24 @@ class Test(ABC):
         self.vnc_port = 12345 + job_ID
         self.vnc_display = ":" + str(self.vnc_port)
         self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
+        self.output_top_dir = test_dir
+        self.orig_dir = os.getcwd()
 
     def run(self):
         pass
+
+    def __enter__(self):
+        path_parts = [self.output_top_dir,
+                      self.cam.model,
+                      self.__class__.__name__]
+        self.output_dir = os.path.join(*path_parts)
+        print(self.output_dir)
+        os.makedirs(self.output_dir)
+        os.chdir(self.output_dir)
+        return self
+
+    def __exit__(self, *args):
+        os.chdir(self.orig_dir)
 
 
 class MenuTest(Test):
@@ -47,7 +66,7 @@ class MenuTest(Test):
     # (if you're lucky, an existing rom will be close and can be
     # adapted).
     qemu_key_sequences = {
-                "424545a5cfe10b1a5d8cefffe9fe5297":
+                "424545a5cfe10b1a5d8cefffe9fe5297": # 50D ROM1
                 ["m", "l", "l", "m", "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", # cycle through all menus
                  "up", "up", "space", "down", "space", # check sub-menus work, turn beep off

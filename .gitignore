@@ -72,6 +72,7 @@
 .*.swp
 magiclantern/qemu_?.zip
 magiclantern/docker_builder/qemu_src_?.tar
+magiclantern/test_output
 *.tmp
 *.[1-9]
 *.a

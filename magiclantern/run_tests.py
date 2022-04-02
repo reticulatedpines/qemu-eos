@@ -13,6 +13,7 @@ def main():
     suite = ml_tests.test_suite.TestSuite(cams=args.cams,
                                           rom_dir=args.rom_dir,
                                           qemu_dir=args.qemu_dir,
+                                          test_output_dir=args.test_output_dir,
                                           test_names=args.tests,
                                           fail_early=args.fail_early)
 
@@ -64,10 +65,15 @@ def parse_args():
                         default=default_qemu_dir,
                         help="Location of dir holding qemu-eos install, default: %(default)s")
 
+    default_test_output_dir = os.path.realpath(os.path.join(".", "test_output"))
+    parser.add_argument("-t", "--test-output-dir",
+                        default=default_test_output_dir,
+                        help="Location of dir to output test results, default: %(default)s")
+
     test_group_names = ""
     for n in ml_tests.test_group_names:
         test_group_names += n + " "
-    parser.add_argument("-t", "--tests",
+    parser.add_argument("--tests",
                         nargs="+",
                         help="Which test groups to run, defaults to all, "
                              "available groups: %s" % test_group_names)
