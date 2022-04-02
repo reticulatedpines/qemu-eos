@@ -94,8 +94,9 @@ class Cam(object):
         self.tests = []
 
     def run_tests(self):
-        for t in self.tests:
-            t.run()
+        for test in self.tests:
+            with test as t:
+                t.run()
 
     def __repr__(self):
         s = "Model: %s\n" % self.model

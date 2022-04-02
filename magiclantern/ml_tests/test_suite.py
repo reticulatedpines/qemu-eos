@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import time
 
 from .cam import Cam
 from . import tests
@@ -11,11 +12,19 @@ class TestSuiteError(Exception):
 
 class TestSuite(object):
     """
+    A TestSuite contains a set of Test objects, run_tests()
+    iterates through running all tests.
+
+    Is a context manager, and should be used via "with";
+    this is used to put test results in a directory hierarchy
+    and ensure changing dir is correctly undone should exceptions
+    etc occur.
     """
     def __init__(self, 
                  cams=[],
                  rom_dir="",
                  qemu_dir="",
+                 test_output_dir="",
                  test_names=[],
                  fail_early=True
                 ):
@@ -34,15 +43,53 @@ class TestSuite(object):
         
         # TODO validate qemu dir
 
-        self.cams = [Cam(c, rom_dir) for c in cams]
+        self.orig_dir = os.getcwd()
+        if not test_output_dir:
+            test_output_top_dir = os.path.join(os.getcwd(), "test_output")
+        else:
+            test_output_top_dir = test_output_dir
 
+        if os.path.exists(test_output_top_dir):
+            if not os.path.isdir(test_output_top_dir):
+                raise TestSuiteError("test_output_dir path existed, "
+                                     "but was not a directory, cannot use")
+        else:
+            os.mkdir(test_output_top_dir)
+
+        datetime = time.localtime()
+        date = str(datetime.tm_year) + "-" \
+               + str(datetime.tm_mon).zfill(2) + "-" \
+               + str(datetime.tm_mday).zfill(2)
+        datetime_str = date + "_" \
+                       + str(datetime.tm_hour).zfill(2) + ":" \
+                       + str(datetime.tm_min).zfill(2) + ":" \
+                       + str(datetime.tm_sec).zfill(2)
+
+        test_output_sub_dir = os.path.join(test_output_top_dir, datetime_str)
+        if os.path.exists(test_output_sub_dir):
+            if not os.path.isdir(test_output_sub_dir):
+                raise TestSuiteError("test_output_sub_dir path existed, "
+                                     "but was not a directory, cannot use")
+        else:
+            os.mkdir(test_output_sub_dir)
+        self.test_output_dir = test_output_sub_dir
+
+        self.cams = [Cam(c, rom_dir) for c in cams]
         # add appropriate tests to each cam
         for c in self.cams:
             if c.can_emulate_gui:
-                c.tests.append(tests.MenuTest(c, qemu_dir))
+                c.tests.append(tests.MenuTest(c, qemu_dir, self.test_output_dir))
             if not c.tests:
                 raise TestSuiteError("Cam has no valid tests to run: %s" % c.model)
 
     def run_tests(self):
         for c in self.cams:
             c.run_tests()
+
+    def __enter__(self):
+        os.chdir(self.test_output_dir)
+        return self
+
+    def __exit__(self, *args):
+        os.chdir(self.orig_dir)
+
