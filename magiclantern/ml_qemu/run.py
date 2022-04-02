@@ -99,6 +99,8 @@ class QemuRunner:
 
     def __exit__(self, *args):
         self.qemu_process.terminate()
+        if self.vnc_client:
+            self.vnc_client.disconnect()
         try:
             os.remove(self.monitor_socket_path)
         except FileNotFoundError:
