@@ -146,7 +146,6 @@ def build_qemu(source_dir):
                     continue
                 for f in files:
                     fullpath = os.path.join(root, f)
-                    print(root, subd, f, fullpath)
                     zipf.write(fullpath, arcname=os.path.join(zip_path_prefix, fullpath))
 
         # add default disk images to zip
