@@ -40,14 +40,29 @@ def parse_args():
                         choices=known_cams,
                         help="Name of model to emulate, required")
 
+    # There are two common locations we may run this file from;
+    # 1) the repo location - qemu-eos/magiclantern/run_qemu.py
+    # 2) the extracted build from the zip - qemu-eos-build/run_qemu.py
+    #
+    # Here we try to detect these cases and provide an appropriate default.
+    if os.path.split(os.getcwd())[1] == "qemu-eos-build":
+        build_dir_default = "."
+    else:
+        build_dir_default = os.path.join("..", "..", "qemu-eos-build")
     parser.add_argument("-q", "--qemu_build_dir",
                         default=os.path.realpath(os.path.join(script_dir,
-                                                 "..", "..", "qemu-eos-build")),
+                                                              build_dir_default)),
                         help="build dir for ML Qemu, default: %(default)s")
 
+    # Similar to above, the ROM dir will be in a different (relative) place,
+    # depending on if we're running direct from repo, or from extracted build.
+    if os.path.split(os.getcwd())[1] == "qemu-eos-build":
+        rom_dir_default = os.path.join("..", "roms")
+    else:
+        rom_dir_default = os.path.join("..", "..", "roms")
     parser.add_argument("-r", "--rom_dir",
                         default=os.path.realpath(os.path.join(script_dir,
-                                                              "..", "..", "roms")),
+                                                              rom_dir_default)),
                         help="location of roms, default: %(default)s")
 
     args = parser.parse_args()
