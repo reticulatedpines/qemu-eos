@@ -12,7 +12,7 @@ def main():
 
     try:
         with QemuRunner(args.qemu_build_dir, args.rom_dir, args.model) as q:
-            q.wait()
+            q.qemu_process.wait()
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
         sys.exit(-1)
