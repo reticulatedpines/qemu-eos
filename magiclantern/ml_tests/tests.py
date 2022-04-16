@@ -2,11 +2,20 @@
 
 from abc import ABC
 import os
+import hashlib
 from time import sleep
 
 from ml_qemu.run import QemuRunner
 
 class TestError(Exception):
+    pass
+
+
+class TestFailError(Exception):
+    """
+    Raised when a test fails, for signalling to
+    the enclosing TestSuite
+    """
     pass
 
 
@@ -31,6 +40,10 @@ class Test(ABC):
         self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
         self.output_top_dir = test_dir
         self.orig_dir = os.getcwd()
+        self.expected_output_dir = os.path.join(self.orig_dir,
+                                                "expected_test_output",
+                                                self.cam.model,
+                                                self.__class__.__name__)
 
     def run(self):
         pass
@@ -40,7 +53,6 @@ class Test(ABC):
                       self.cam.model,
                       self.__class__.__name__]
         self.output_dir = os.path.join(*path_parts)
-        print(self.output_dir)
         os.makedirs(self.output_dir)
         os.chdir(self.output_dir)
         return self
@@ -90,9 +102,21 @@ class MenuTest(Test):
                         vnc_display=self.vnc_display) as q:
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
-                screen = q.key_press(k)
+                capture_filename = q.key_press(k)
+                # TODO check screen matches expected, raise if not
+                capture_filepath = os.path.join(self.output_dir, capture_filename)
+                with open(capture_filepath, "rb") as f:
+                    test_hash = hashlib.md5(f.read()).hexdigest()
+                with open(os.path.join(self.expected_output_dir, capture_filename), "rb") as f:
+                    expected_hash = hashlib.md5(f.read()).hexdigest()
+                if test_hash != expected_hash:
+                    # attempt clean shutdown via Qemu monitor socket
+                    q.shutdown()
+                    raise TestFailError("FAIL: mismatched hash for file '%s', expected %s, got %s"
+                                        % (capture_filename, expected_hash, test_hash))
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
+        print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
 
 

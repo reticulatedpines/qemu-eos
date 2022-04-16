@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import time
 
 from . import test_group_names
@@ -43,6 +44,8 @@ class TestSuite(object):
         # TODO validate rom dir
         
         # TODO validate qemu dir
+
+        self.fail_early = fail_early
 
         self.orig_dir = os.getcwd()
         if not test_output_dir:
@@ -92,7 +95,14 @@ class TestSuite(object):
 
     def run_tests(self):
         for c in self.cams:
-            c.run_tests()
+            try:
+                c.run_tests()
+            except tests.TestFailError as e:
+                print(e)
+                if self.fail_early: # if any test fails, immediately end all testing
+                    sys.exit(-1)
+                else: # run all tests, report failures at the end
+                    pass
 
     def __enter__(self):
         os.chdir(self.test_output_dir)
