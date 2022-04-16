@@ -133,10 +133,21 @@ def build_qemu(source_dir):
                 zipf.write(fullpath, arcname=os.path.join(zip_path_prefix, relpath))
 
         # add ML scripts to zip
-        ml_scripts = ["run_qemu.py"]
+        ml_scripts = ["run_qemu.py", "run_tests.py"]
         for s in ml_scripts:
             zipf.write(os.path.join(script_dir, s),
                        arcname=os.path.join(zip_path_prefix, s))
+
+        # add modules required by ML scripts
+        ml_module_dirs = ["ml_qemu", "ml_tests"]
+        for d in ml_module_dirs:
+            for (root, subd, files) in os.walk(d):
+                if os.path.split(root)[1] == "__pycache__":
+                    continue
+                for f in files:
+                    fullpath = os.path.join(root, f)
+                    print(root, subd, f, fullpath)
+                    zipf.write(fullpath, arcname=os.path.join(zip_path_prefix, fullpath))
 
         # add default disk images to zip
         disk_image = lzma.open(os.path.join(script_dir, "disk_images",
