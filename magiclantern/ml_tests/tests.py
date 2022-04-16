@@ -73,6 +73,7 @@ class MenuTest(Test):
                  "right", "up", "up", "space", "pgdn", "space", # check wheel controls using Expo Comp sub-menu
                 ]
                 }
+
     def run(self):
         print("MenuTest starting on %s %s" % 
               (self.cam.model, self.cam.code_rom_md5))
@@ -89,7 +90,7 @@ class MenuTest(Test):
                         vnc_display=self.vnc_display) as q:
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
-                q.key_press(k)
+                screen = q.key_press(k)
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
