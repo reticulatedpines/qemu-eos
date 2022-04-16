@@ -125,7 +125,8 @@ class QemuRunner:
         """
         self.vnc_client.keyPress(key)
         if capture_screen:
-            self.capture_screen()
+            return self.capture_screen()
+        return None
 
     def capture_screen(self):
         """
@@ -134,8 +135,8 @@ class QemuRunner:
         sleep(0.1)
         n = self.screen_cap_counter
         self.screen_cap_counter += 1
-        self.vnc_client.captureScreen(self.screen_cap_prefix
-                                      + str(n).zfill(2)
-                                      + ".png")
+        capture_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
+        self.vnc_client.captureScreen(capture_name)
         sleep(0.1)
+        return capture_name
 

@@ -3,6 +3,7 @@
 import os
 import time
 
+from . import test_group_names
 from .cam import Cam
 from . import tests
 
@@ -77,10 +78,17 @@ class TestSuite(object):
         self.cams = [Cam(c, rom_dir) for c in cams]
         # add appropriate tests to each cam
         for c in self.cams:
-            if c.can_emulate_gui:
-                c.tests.append(tests.MenuTest(c, qemu_dir, self.test_output_dir))
+            for t in test_names:
+                if t not in test_group_names:
+                    raise TestSuiteError("Unexpected test name: %s" % t)
+                if t == "menu" and c.can_emulate_gui:
+                    c.tests.append(tests.MenuTest(c, qemu_dir, self.test_output_dir))
+
             if not c.tests:
-                raise TestSuiteError("Cam has no valid tests to run: %s" % c.model)
+                print ("WARNING: Cam has no valid tests to run: %s" % c.model)
+
+        # TODO we want to check if each cam ran and passed
+        # all the tests it should (from the requested set)
 
     def run_tests(self):
         for c in self.cams:
