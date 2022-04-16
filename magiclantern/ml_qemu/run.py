@@ -122,6 +122,8 @@ class QemuRunner:
         """
         Use VNC to press a key in the VM, and by default,
         capture the screen a short time afterwards.
+
+        Returns filename (not path) of captured image.
         """
         self.vnc_client.keyPress(key)
         if capture_screen:
