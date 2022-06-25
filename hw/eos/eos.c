@@ -2320,19 +2320,6 @@ static void cpu1_wakeup_timer(void *opaque)
 }
 #endif
 
-#if 1
-static void cpu1_interrupt_timer(void *opaque)
-{
-    EOSState *s = opaque;
-    printf(" ==== interrupt_timer callback fired\n");
-    s->irq_id = 0xa; // FIXME SJE, do we want this?  Alex didn't have it, but
-                     // I see asserts from hw/eos/dbi/logging.c if I use -d callstacks without it.
-    s->irq_enabled[s->irq_id] = 0;
-//    cpu_interrupt(CPU(OTHER_CPU), CPU_INTERRUPT_HARD);
-    cpu_interrupt(CPU(s->cpus[1]), CPU_INTERRUPT_HARD);
-}
-#endif
-
 unsigned int eos_handle_multicore(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
 {
     const char * module = "MULTICORE";
@@ -2354,32 +2341,14 @@ unsigned int eos_handle_multicore(unsigned int parm, EOSState *s, unsigned int a
         case 0x100:
             msg = "Wake Up CPU1?";
             assert(s->cpu1);
-            #if 1
+            #if 0
             CPU(s->cpu1)->halted = 0;
             printf(KLRED"Wake Up CPU1\n"KRESET);
-            #endif
-            #if 0
-            printf(" ==== scheduled CPU1 wakeup\n");
-            timer_init_ms(&s->multicore_timer_01, QEMU_CLOCK_VIRTUAL, cpu1_wakeup_timer, s);
-            timer_mod(&s->multicore_timer_01, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 50);
             #endif
             break;
 
         case 0x214:
             msg = "Signal to CPU1?";
-            if (value) {
-                #if 0
-                s->irq_id = 0xa; // FIXME SJE, do we want this?  Alex didn't have it, but
-                                 // I see asserts from hw/eos/dbi/logging.c if I use -d callstacks without it.
-                s->irq_enabled[s->irq_id] = 0;
-                cpu_interrupt(CPU(OTHER_CPU), CPU_INTERRUPT_HARD);
-                #endif
-                #if 1
-                printf(" ==== scheduled CPU1 interrupt\n");
-                timer_init_ms(&s->multicore_timer_02, QEMU_CLOCK_VIRTUAL, cpu1_interrupt_timer, s);
-                timer_mod(&s->multicore_timer_02, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 250);
-                #endif
-            }
             break;
     }
 
@@ -2621,6 +2590,20 @@ unsigned int eos_handle_intengine_gic ( unsigned int parm, EOSState *s, unsigned
                     MMIO_VAR(target[id]);
                     break;
                 }
+
+                case 0xf00:
+                { // software interrupt?
+                    msg = "GICD software int?";
+                    // SJE should we pass all values? 0xa is required to wake cpu1
+                    // from a wfi loop while cpu0 does early init.  See e.g. 200D 1.0.1
+                    // 0xe0004d30
+                    if ((value & 0xffff) == 0xa)
+                    {
+                        eos_mem_write(s, 0xc100010c, &value, 1);
+                        cpu_interrupt(CPU(s->cpu1), 0xa);
+                    }
+                }
+
             }
             break;
         }
