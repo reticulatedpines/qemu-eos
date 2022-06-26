@@ -936,6 +936,10 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         locked = true;
     }
     r = memory_region_dispatch_read(mr, mr_offset, &val, op, iotlbentry->attrs);
+    if (r == MEMTX_DECODE_ERROR) {
+        cpu_dump_state(cpu, stderr, 0);
+        assert(0);
+    }
     if (r != MEMTX_OK) {
         hwaddr physaddr = mr_offset +
             section->offset_within_address_space -
@@ -975,6 +979,10 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         locked = true;
     }
     r = memory_region_dispatch_write(mr, mr_offset, val, op, iotlbentry->attrs);
+    if (r == MEMTX_DECODE_ERROR) {
+        cpu_dump_state(cpu, stderr, 0);
+        assert(0);
+    }
     if (r != MEMTX_OK) {
         hwaddr physaddr = mr_offset +
             section->offset_within_address_space -

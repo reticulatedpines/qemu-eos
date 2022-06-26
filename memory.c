@@ -1420,7 +1420,6 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
         fprintf(stderr, "[EOS] MEMTX invalid read - addr, size: 0x%lx, 0x%x\n", addr, size);
         // the cause needs investigating, but if this is due to a read from normal ram
         // that would succeed on real cam, extending ram_extra in model_list.c may be appropriate.
-        assert(0);
         return MEMTX_DECODE_ERROR;
     }
 
@@ -1468,7 +1467,6 @@ MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
         fprintf(stderr, "[EOS] MEMTX invalid write - addr, size: 0x%lx, 0x%x\n", addr, size);
         // the cause needs investigating, but if this is due to a write from normal ram
         // that would succeed on real cam, extending ram_extra in model_list.c may be appropriate.
-        assert(0);
         return MEMTX_DECODE_ERROR;
     }
 
