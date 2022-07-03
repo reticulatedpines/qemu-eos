@@ -1875,7 +1875,12 @@ static void tb_exec_cb(CPUState *cpu, TranslationBlock *tb)
             {
                 eos_callstack_print_verbose();
             }
-            DebugMsg_log();
+            // SJE this is now done the Qemu 4 way, by instrumenting
+            // instructions, not TBs
+            //
+            // SJE TODO: more of the above should probably be moved
+            // into the per instruction plugin
+            //DebugMsg_log();
         }
         prev_pc = tb->pc;
     }

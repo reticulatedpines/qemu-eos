@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "qapi/error.h"
 #include "cpu.h"
 
@@ -20,13 +21,18 @@
 
 // (adapted from nkls' debug_message_helper.c)
 
-void DebugMsg_log(void)
+void DebugMsg_log(unsigned int cpu_index)
 {
-    uint32_t r0 = CURRENT_CPU->env.regs[0]; // id 1
-    uint32_t r1 = CURRENT_CPU->env.regs[1]; // id 2
-    uint32_t r2 = CURRENT_CPU->env.regs[2]; // format string address
-    uint32_t r3 = CURRENT_CPU->env.regs[3]; // first argument
-    uint32_t sp = CURRENT_CPU->env.regs[13]; // stack pointer
+    ARMCPU *cpu = ARM_CPU(qemu_get_cpu(cpu_index));
+
+    uint32_t r0 = cpu->env.regs[0]; // id 1
+    uint32_t r1 = cpu->env.regs[1]; // id 2
+    uint32_t r2 = cpu->env.regs[2]; // format string address
+    uint32_t r3 = cpu->env.regs[3]; // first argument
+    uint32_t sp = cpu->env.regs[13]; // stack pointer
+
+    if (!qemu_loglevel_mask(EOS_LOG_DEBUGMSG))
+        return;
 
     char out[512];
     int len = 0;
