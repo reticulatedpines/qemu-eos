@@ -35,13 +35,13 @@
 
 
 /* adapted from cr2hdr */
-static void * load_pgm(const char * filename, int * p_width, int * p_height)
+static void *load_pgm(const char *filename, int *p_width, int *p_height)
 {
     /* try to open using dcraw */
     char dcraw_cmd[1000];
     snprintf(dcraw_cmd, sizeof(dcraw_cmd), "dcraw -4 -E -c -t 0 \"%s\"", filename);
 
-    FILE* fp = popen(dcraw_cmd, "r");
+    FILE *fp = popen(dcraw_cmd, "r");
     assert(fp);
 
     /* PGM read code from dcraw */
@@ -71,7 +71,7 @@ static void * load_pgm(const char * filename, int * p_width, int * p_height)
     int width = *p_width = dim[0];
     int height = *p_height = dim[1];
 
-    void * buf = malloc(width * height * 2);
+    void *buf = malloc(width * height * 2);
     assert(buf);
     int size = fread(buf, 1, width * height * 2, fp);
     assert(size == width * height * 2);
@@ -111,13 +111,13 @@ struct raw_pixblock
 #define SET_PG(x) { int v = (x); p->g_lo = v; p->g_hi = v >> 2; }
 #define SET_PH(x) { int v = (x); p->h = v; }
 
-static void raw_pack14(uint16_t* buf16, struct raw_pixblock * buf14, int N)
+static void raw_pack14(uint16_t *buf16, struct raw_pixblock *buf14, int N)
 {
     fprintf(stderr, "[CAPTURE] Packing %d pixels to 14-bit...\n", N);
 
     for (int i = 0; i < N; i += 8)
     {
-        struct raw_pixblock * p = buf14 + i/8;
+        struct raw_pixblock *p = buf14 + i/8;
         SET_PA(buf16[i]);
         SET_PB(buf16[i+1]);
         SET_PC(buf16[i+2]);
@@ -129,11 +129,11 @@ static void raw_pack14(uint16_t* buf16, struct raw_pixblock * buf14, int N)
     }
 }
 
-static void gen_dark_frame(EOSState *s, void * buf, int requested_width, int requested_height)
+static void gen_dark_frame(void *buf, int requested_width, int requested_height)
 {
     fprintf(stderr, "[CAPTURE] Generating a %dx%d dark frame...\n", requested_width, requested_height);
 
-    uint16_t * buf16 = malloc(requested_width * requested_height * 2);
+    uint16_t *buf16 = malloc(requested_width * requested_height * 2);
     assert(buf16);
 
     for (int i = 0; i < requested_width * requested_height; i++)
@@ -152,10 +152,10 @@ static void gen_dark_frame(EOSState *s, void * buf, int requested_width, int req
  * W, H: output size
  * returns: output buffer (malloc'd)
  */
-static uint16_t * pad_pgm(uint16_t * inp, int w, int h, int W, int H)
+static uint16_t *pad_pgm(uint16_t *inp, int w, int h, int W, int H)
 {
     fprintf(stderr, "[CAPTURE] Padding from %dx%d to %dx%d...\n", w, h, W, H);
-    uint16_t * out = malloc(W * H * 2);
+    uint16_t *out = malloc(W * H * 2);
     assert(out);
  
     for (int yo = 0; yo < H; yo++)
@@ -173,20 +173,20 @@ static uint16_t * pad_pgm(uint16_t * inp, int w, int h, int W, int H)
     return out;
 }
 
-static void load_fullres_14bit_raw(EOSState *s, void * buf, int requested_width, int requested_height)
+static void load_fullres_14bit_raw(void *buf, int requested_width, int requested_height)
 {
     /* todo: autodetect all DNG files and cycle between them */
-    const char * user_filename = getenv("QEMU_EOS_VRAM_PH_QR_RAW");
+    const char *user_filename = getenv("QEMU_EOS_VRAM_PH_QR_RAW");
 
-    const char * filename = (user_filename && user_filename[0])
+    const char *filename = (user_filename && user_filename[0])
         ? user_filename
-        : eos_get_cam_path(s, "VRAM/PH-QR/RAW-000.DNG");
+        : eos_get_cam_path("VRAM/PH-QR/RAW-000.DNG");
 
     fprintf(stderr, "[CAPTURE] Loading photo raw data from %s (expecting %dx%d)...\n",
         filename, requested_width, requested_height
     );
     int width, height;
-    uint16_t * pgm = load_pgm(filename, &width, &height);
+    uint16_t *pgm = load_pgm(filename, &width, &height);
     if (pgm)
     {
         if (width != requested_width ||
@@ -202,17 +202,17 @@ static void load_fullres_14bit_raw(EOSState *s, void * buf, int requested_width,
     else
     {
         fprintf(stderr, "[CAPTURE] %s load error\n", filename);
-        gen_dark_frame(s, buf, requested_width, requested_height);
+        gen_dark_frame(buf, requested_width, requested_height);
     }
 }
 
-unsigned int eos_handle_cartridge ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_cartridge(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    io_log("Cartridge", s, address, type, value, 0, 0, 0, 0);
+    io_log("Cartridge", address, type, value, 0, 0, 0, 0);
     return 0;
 }
 
-static void edmac_trigger_interrupt(EOSState* s, int channel, int delay)
+static void edmac_trigger_interrupt(int channel, int delay)
 {
     /* from register_interrupt calls */
     const int edmac_interrupts[] = {
@@ -239,30 +239,28 @@ static void edmac_trigger_interrupt(EOSState* s, int channel, int delay)
     assert(channel >= 0 && channel < COUNT(edmac_interrupts));
     assert(edmac_interrupts[channel]);
     
-    eos_trigger_int(s, edmac_interrupts[channel], delay);
+    eos_trigger_int(edmac_interrupts[channel], delay);
 }
 
-static int edmac_fix_off1(EOSState *s, int32_t off)
+static int edmac_fix_off1(int32_t off)
 {
     /* the value is signed, but the number of bits is model-dependent */
-    int off1_bits = (s->model->digic_version <= 4) ? 17 : 
-                    (s->model->digic_version == 5) ? 19 : 0;
+    int off1_bits = (eos_state->model->digic_version <= 4) ? 17 : 
+                    (eos_state->model->digic_version == 5) ? 19 : 0;
     assert(off1_bits);
     return off << (32-off1_bits) >> (32-off1_bits);
 }
 
-static int edmac_fix_off2(EOSState *s, int32_t off)
+static int edmac_fix_off2(int32_t off)
 {
     /* the value is signed, but the number of bits is model-dependent */
-    int off2_bits = (s->model->digic_version <= 4) ? 28 : 
-                    (s->model->digic_version == 5) ? 32 : 0;
+    int off2_bits = (eos_state->model->digic_version <= 4) ? 28 : 
+                    (eos_state->model->digic_version == 5) ? 32 : 0;
     assert(off2_bits);
     return off << (32-off2_bits) >> (32-off2_bits);
 }
 
-static char * edmac_format_size_3(
-    int x, int off
-)
+static char *edmac_format_size_3(int x, int off)
 {
     static char buf[32];
     snprintf(buf, sizeof(buf),
@@ -272,15 +270,12 @@ static char * edmac_format_size_3(
     return buf;
 }
 
-static char * edmac_format_size_2(
-    int y, int x,
-    int off1, int off2
-)
+static char *edmac_format_size_2(int y, int x, int off1, int off2)
 {
     static char buf[64]; buf[0] = 0;
     if (off1 == off2)
     {
-        char * inner = edmac_format_size_3(x, off1);
+        char *inner = edmac_format_size_3(x, off1);
         snprintf(buf, sizeof(buf),
             y == 0 ? "%s" : strchr(inner, ' ') ? "(%s) x %d" : "%sx%d",
             inner, y+1
@@ -291,7 +286,7 @@ static char * edmac_format_size_2(
         /* y may be executed never, once or many times */
         if (y)
         {
-            char * inner1 = edmac_format_size_3(x, off1);
+            char *inner1 = edmac_format_size_3(x, off1);
             snprintf(buf, sizeof(buf),
                 y == 0 ? "%s" : strchr(inner1, ' ') ? "(%s) x %d" : "%sx%d",
                 inner1, y
@@ -299,21 +294,18 @@ static char * edmac_format_size_2(
         }
         
         /* y is executed once */
-        char * inner2 = edmac_format_size_3(x, off2);
+        char *inner2 = edmac_format_size_3(x, off2);
         STR_APPEND(buf, "%s%s", buf[0] && inner2[0] ? ", " : "", inner2);
     }
     return buf;
 }
 
-static char * edmac_format_size_1(
-    int y, int xn, int xa, int xb,
-    int off1a, int off1b, int off2, int off3
-)
+static char *edmac_format_size_1(int y, int xn, int xa, int xb, int off1a, int off1b, int off2, int off3)
 {
     static char buf[128]; buf[0] = 0;
     if (xa == xb && off1a == off1b && off2 == off3)
     {
-        char * inner = edmac_format_size_2(y, xa, off1a, off2);
+        char *inner = edmac_format_size_2(y, xa, off1a, off2);
         snprintf(buf, sizeof(buf),
             xn == 0 ? "%s" : strchr(inner, ' ') ? "(%s) x %d" : "%sx%d",
             inner, xn+1
@@ -324,7 +316,7 @@ static char * edmac_format_size_1(
         /* xa may be executed never, once or many times */
         if (xn)
         {
-            char * inner1 = edmac_format_size_2(y, xa, off1a, off2);
+            char *inner1 = edmac_format_size_2(y, xa, off1a, off2);
             snprintf(buf, sizeof(buf),
                 xn == 1 ? "%s" : strchr(inner1, ' ') ? "(%s) x %d" : "%sx%d",
                 inner1, xn
@@ -332,7 +324,7 @@ static char * edmac_format_size_1(
         }
         
         /* xb is executed once */
-        char * inner2 = edmac_format_size_2(y, xb, off1b, off3);
+        char *inner2 = edmac_format_size_2(y, xb, off1b, off3);
         STR_APPEND(buf, "%s%s",
             !(buf[0] && inner2[0]) ? "" :   /* no separator needed */
             strlen(buf) > 20 && strlen(inner2) > 20 ? ",\n  " : ", ",   /* newline for long strings */
@@ -342,10 +334,7 @@ static char * edmac_format_size_1(
     return buf;
 }
 
-static char * edmac_format_size(
-    int yn, int ya, int yb, int xn, int xa, int xb,
-    int off1a, int off1b, int off2a, int off2b, int off3
-)
+static char *edmac_format_size(int yn, int ya, int yb, int xn, int xa, int xb, int off1a, int off1b, int off2a, int off2b, int off3)
 {
 #if 0
     const char * names[] = { "yn", "ya", "yb", "xn", "xa", "xb", "off1a", "off1b", "off2a", "off2b", "off3" };
@@ -365,7 +354,7 @@ static char * edmac_format_size(
     
     if (ya == yb && off2a == off2b)
     {
-        char * inner = edmac_format_size_1(ya, xn, xa, xb, off1a, off1b, off2a, off3);
+        char *inner = edmac_format_size_1(ya, xn, xa, xb, off1a, off1b, off2a, off3);
         snprintf(buf, sizeof(buf),
             yn == 0 ? "%s" : strchr(inner, ' ') ? "(%s) x %d" : "%sx%d",
             inner, yn+1
@@ -376,7 +365,7 @@ static char * edmac_format_size(
         /* ya may be executed never, once or many times */
         if (yn)
         {
-            char * inner1 = edmac_format_size_1(ya, xn, xa, xb, off1a, off1b, off2a, off3);
+            char *inner1 = edmac_format_size_1(ya, xn, xa, xb, off1a, off1b, off2a, off3);
             snprintf(buf, sizeof(buf),
                 yn == 1 ? "%s" : strchr(inner1, ' ') ? "(%s) x %d" : "%sx%d",
                 inner1, yn
@@ -385,7 +374,7 @@ static char * edmac_format_size(
         
         /* yb is executed once */
         /* setting the last offset to off1b usually simplifies the formula */
-        char * inner2 = edmac_format_size_1(yb, xn, xa, xb, off1a, off1b, off2b, off3 ? off3 : off1b);
+        char *inner2 = edmac_format_size_1(yb, xn, xa, xb, off1a, off1b, off2b, off3 ? off3 : off1b);
         STR_APPEND(buf, "%s%s",
             !(buf[0] && inner2[0]) ? "" :   /* no separator needed */
             strlen(buf) > 20 && strlen(inner2) > 20 ? ",\n  " : ", ",   /* newline for long strings */
@@ -426,12 +415,12 @@ static void edmac_test_format_size(void)
 }
 
 /* 1 on success, 0 = no data available yet (should retry) */
-static int edmac_do_transfer(EOSState *s, int channel)
+static int edmac_do_transfer(int channel)
 {
     /* not fully implemented */
     fprintf(stderr, "[EDMAC#%d] Starting transfer %s 0x%X %s ", channel,
         (channel & 8) ? "from" : "to",
-        s->edmac.ch[channel].addr,
+        eos_state->edmac.ch[channel].addr,
         (channel & 8) ? "to" : "from"
     );
     
@@ -440,9 +429,9 @@ static int edmac_do_transfer(EOSState *s, int channel)
     if (channel & 8)
     {
         /* read channel */
-        for (int c = 0; c < COUNT(s->edmac.read_conn); c++)
+        for (int c = 0; c < COUNT(eos_state->edmac.read_conn); c++)
         {
-            if (s->edmac.read_conn[c] == channel)
+            if (eos_state->edmac.read_conn[c] == channel)
             {
                 /* can a read operation have multiple destinations? */
                 /* if yes, we don't handle that case yet */
@@ -453,7 +442,7 @@ static int edmac_do_transfer(EOSState *s, int channel)
     }
     else
     {
-        conn = s->edmac.write_conn[channel];
+        conn = eos_state->edmac.write_conn[channel];
     }
     
     fprintf(stderr, "<%d>, ", conn);
@@ -473,18 +462,18 @@ static int edmac_do_transfer(EOSState *s, int channel)
      * 
      */
 
-    int xa = s->edmac.ch[channel].xa;
-    int ya = s->edmac.ch[channel].ya;
-    int xb = s->edmac.ch[channel].xb;
-    int yb = s->edmac.ch[channel].yb;
-    int xn = s->edmac.ch[channel].xn;
-    int yn = s->edmac.ch[channel].yn;
-    int off1a = edmac_fix_off1(s, s->edmac.ch[channel].off1a);
-    int off1b = edmac_fix_off1(s, s->edmac.ch[channel].off1b);
-    int off2a = edmac_fix_off2(s, s->edmac.ch[channel].off2a);
-    int off2b = edmac_fix_off2(s, s->edmac.ch[channel].off2b);
-    int off3  = edmac_fix_off2(s, s->edmac.ch[channel].off3);
-    int flags = edmac_fix_off2(s, s->edmac.ch[channel].flags);
+    int xa = eos_state->edmac.ch[channel].xa;
+    int ya = eos_state->edmac.ch[channel].ya;
+    int xb = eos_state->edmac.ch[channel].xb;
+    int yb = eos_state->edmac.ch[channel].yb;
+    int xn = eos_state->edmac.ch[channel].xn;
+    int yn = eos_state->edmac.ch[channel].yn;
+    int off1a = edmac_fix_off1(eos_state->edmac.ch[channel].off1a);
+    int off1b = edmac_fix_off1(eos_state->edmac.ch[channel].off1b);
+    int off2a = edmac_fix_off2(eos_state->edmac.ch[channel].off2a);
+    int off2b = edmac_fix_off2(eos_state->edmac.ch[channel].off2b);
+    int off3  = edmac_fix_off2(eos_state->edmac.ch[channel].off3);
+    int flags = edmac_fix_off2(eos_state->edmac.ch[channel].flags);
     
     fprintf(stderr, "%s, ", edmac_format_size(yn, ya, yb, xn, xa, xb, off1a, off1b, off2a, off2b, off3));
 
@@ -503,25 +492,25 @@ static int edmac_do_transfer(EOSState *s, int channel)
           (xb + off1b) * yb + xb + off3);
 
     /* we must have some valid address configured */
-    assert(s->edmac.ch[channel].addr);
+    assert(eos_state->edmac.ch[channel].addr);
 
     if (channel & 8)
     {
         /* from memory to image processing modules */
-        uint32_t src = s->edmac.ch[channel].addr;
+        uint32_t src = eos_state->edmac.ch[channel].addr;
         
         /* repeated transfers will append to existing buffer */
-        uint32_t old_size = s->edmac.conn_data[conn].data_size;
+        uint32_t old_size = eos_state->edmac.conn_data[conn].data_size;
         uint32_t new_size = old_size + transfer_data_size;
-        if (s->edmac.conn_data[conn].buf)
+        if (eos_state->edmac.conn_data[conn].buf)
         {
             fprintf(stderr, "[EDMAC] <%d>: data size %d -> %d.\n",
                 conn, old_size, new_size
             );
         }
-        s->edmac.conn_data[conn].buf = realloc(s->edmac.conn_data[conn].buf, new_size );
-        void * dst = s->edmac.conn_data[conn].buf + old_size;
-        s->edmac.conn_data[conn].data_size = new_size;
+        eos_state->edmac.conn_data[conn].buf = realloc(eos_state->edmac.conn_data[conn].buf, new_size);
+        void *dst = eos_state->edmac.conn_data[conn].buf + old_size;
+        eos_state->edmac.conn_data[conn].data_size = new_size;
         
         for (int jn = 0; jn <= yn; jn++)
         {
@@ -535,31 +524,34 @@ static int edmac_do_transfer(EOSState *s, int channel)
                 for (int j = 0; j <= y; j++)
                 {
                     int off = (j < y) ? off1 : off23;
-                    eos_mem_read(s, src, dst, x);
+                    eos_mem_read(src, dst, x);
                     src += x + off;
                     dst += x;
                 }
             }
         }
-        fprintf(stderr, "[EDMAC#%d] %d bytes read from %X-%X.\n", channel, transfer_data_size, s->edmac.ch[channel].addr, s->edmac.ch[channel].addr + transfer_data_skip_size);
+        fprintf(stderr, "[EDMAC#%d] %d bytes read from %X-%X.\n",
+                channel, transfer_data_size,
+                eos_state->edmac.ch[channel].addr,
+                eos_state->edmac.ch[channel].addr + transfer_data_skip_size);
     }
     else
     {
         /* from image processing modules to memory */
-        uint32_t dst = s->edmac.ch[channel].addr;
+        uint32_t dst = eos_state->edmac.ch[channel].addr;
         
         if (conn == 0 || conn == 35)
         {
             /* sensor data? */
-            s->edmac.conn_data[conn].buf = malloc(transfer_data_size);
-            assert(s->edmac.conn_data[conn].buf);
-            s->edmac.conn_data[conn].data_size = transfer_data_size;
+            eos_state->edmac.conn_data[conn].buf = malloc(transfer_data_size);
+            assert(eos_state->edmac.conn_data[conn].buf);
+            eos_state->edmac.conn_data[conn].data_size = transfer_data_size;
 
             if (xb == 0x20)
             {
                 /* not sure what's up with that - just zero it out */
                 fprintf(stderr, "[CAPTURE] FIXME: what should we do here?\n");
-                memset(s->edmac.conn_data[conn].buf, 0, transfer_data_size);
+                memset(eos_state->edmac.conn_data[conn].buf, 0, transfer_data_size);
             }
             else
             {
@@ -567,7 +559,7 @@ static int edmac_do_transfer(EOSState *s, int channel)
                 int raw_width = xb * 8/14;
                 int raw_height = yb ? yb + 1 : xn + 1;
                 assert(raw_width * raw_height * 14/8 == transfer_data_size);
-                load_fullres_14bit_raw(s, s->edmac.conn_data[conn].buf, raw_width, raw_height);
+                load_fullres_14bit_raw(eos_state->edmac.conn_data[conn].buf, raw_width, raw_height);
             }
         }
         else if (conn == 6 || conn == 7)
@@ -578,22 +570,22 @@ static int edmac_do_transfer(EOSState *s, int channel)
         else
         {
             fprintf(stderr, "[ENGINE] FIXME: returning dummy data on <%d>\n", conn);
-            s->edmac.conn_data[conn].buf = malloc(transfer_data_size);
-            assert(s->edmac.conn_data[conn].buf);
-            s->edmac.conn_data[conn].data_size = transfer_data_size;
-            memset(s->edmac.conn_data[conn].buf, 0, transfer_data_size);
+            eos_state->edmac.conn_data[conn].buf = malloc(transfer_data_size);
+            assert(eos_state->edmac.conn_data[conn].buf);
+            eos_state->edmac.conn_data[conn].data_size = transfer_data_size;
+            memset(eos_state->edmac.conn_data[conn].buf, 0, transfer_data_size);
         }
 
-        if (s->edmac.conn_data[conn].data_size < transfer_data_size)
+        if (eos_state->edmac.conn_data[conn].data_size < transfer_data_size)
         {
             fprintf(stderr, "[EDMAC#%d] Data %s; will try again later.\n", channel,
-                s->edmac.conn_data[conn].data_size ? "incomplete" : "unavailable"
+                eos_state->edmac.conn_data[conn].data_size ? "incomplete" : "unavailable"
             );
             return 0;
         }
-        assert(s->edmac.conn_data[conn].buf);
+        assert(eos_state->edmac.conn_data[conn].buf);
 
-        void * src = s->edmac.conn_data[conn].buf;
+        void *src = eos_state->edmac.conn_data[conn].buf;
 
         for (int jn = 0; jn <= yn; jn++)
         {
@@ -607,16 +599,16 @@ static int edmac_do_transfer(EOSState *s, int channel)
                 for (int j = 0; j <= y; j++)
                 {
                     int off = (j < y) ? off1 : off23;
-                    eos_mem_write(s, dst, src, x);
+                    eos_mem_write(dst, src, x);
                     src += x;
                     dst += x + off;
                 }
             }
         }
-        assert(src - s->edmac.conn_data[conn].buf == transfer_data_size);
-        assert(dst - s->edmac.ch[channel].addr == transfer_data_skip_size);
+        assert(src - eos_state->edmac.conn_data[conn].buf == transfer_data_size);
+        assert(dst - eos_state->edmac.ch[channel].addr == transfer_data_skip_size);
 
-        uint32_t old_size = s->edmac.conn_data[conn].data_size;
+        uint32_t old_size = eos_state->edmac.conn_data[conn].data_size;
         uint32_t new_size = old_size - transfer_data_size;
 
         if (new_size)
@@ -625,25 +617,29 @@ static int edmac_do_transfer(EOSState *s, int channel)
              * shift the remaining data for use with subsequent transfers
              * (a little slow, kinda reinventing a FIFO)
              */
-            memmove(s->edmac.conn_data[conn].buf, s->edmac.conn_data[conn].buf + transfer_data_size, new_size);
-            s->edmac.conn_data[conn].buf = realloc(s->edmac.conn_data[conn].buf, new_size);
-            s->edmac.conn_data[conn].data_size = new_size;
+            memmove(eos_state->edmac.conn_data[conn].buf,
+                    eos_state->edmac.conn_data[conn].buf + transfer_data_size, new_size);
+            eos_state->edmac.conn_data[conn].buf = realloc(eos_state->edmac.conn_data[conn].buf, new_size);
+            eos_state->edmac.conn_data[conn].data_size = new_size;
             fprintf(stderr, "[EDMAC] <%d>: data size %d -> %d.\n",
                 conn, old_size, new_size
             );
         }
         else
         {
-            free(s->edmac.conn_data[conn].buf);
-            s->edmac.conn_data[conn].buf = 0;
-            s->edmac.conn_data[conn].data_size = 0;
+            free(eos_state->edmac.conn_data[conn].buf);
+            eos_state->edmac.conn_data[conn].buf = 0;
+            eos_state->edmac.conn_data[conn].data_size = 0;
         }
         
-        fprintf(stderr, "[EDMAC#%d] %d bytes written to %X-%X.\n", channel, transfer_data_size, s->edmac.ch[channel].addr, s->edmac.ch[channel].addr + transfer_data_skip_size);
+        fprintf(stderr, "[EDMAC#%d] %d bytes written to %X-%X.\n",
+                channel, transfer_data_size,
+                eos_state->edmac.ch[channel].addr,
+                eos_state->edmac.ch[channel].addr + transfer_data_skip_size);
     }
 
     /* return end address when reading back the register */
-    s->edmac.ch[channel].addr += transfer_data_skip_size;
+    eos_state->edmac.ch[channel].addr += transfer_data_skip_size;
 
     /* assume 200 MB/s transfer speed */
     int delay = transfer_data_size * 1e6 / (200*1024*1024) / 0x100;
@@ -657,34 +653,34 @@ static int edmac_do_transfer(EOSState *s, int channel)
 
     fprintf(stderr, "[EDMAC#%d] transfer delay %d x 256 us.\n", channel, delay);
 
-    edmac_trigger_interrupt(s, channel, delay);
+    edmac_trigger_interrupt(channel, delay);
     return 1;
 }
 
-static void prepro_execute(EOSState *s)
+static void prepro_execute(void)
 {
-    if (s->prepro.adkiz_intr_en)
+    if (eos_state->prepro.adkiz_intr_en)
     {
         /* appears to use data from connections 8 and 15 */
         /* are these hardcoded? */
-        if (s->edmac.conn_data[8].buf && s->edmac.conn_data[15].buf)
+        if (eos_state->edmac.conn_data[8].buf && eos_state->edmac.conn_data[15].buf)
         {
             fprintf(stderr, "[ADKIZ] Dummy operation.\n");
             
             /* "consume" the data from those two connections */
-            assert(s->edmac.conn_data[8].buf);
-            assert(s->edmac.conn_data[15].buf);
+            assert(eos_state->edmac.conn_data[8].buf);
+            assert(eos_state->edmac.conn_data[15].buf);
 
             /* free it to allow the next operation */
-            free(s->edmac.conn_data[8].buf);
-            s->edmac.conn_data[8].buf = 0;
-            s->edmac.conn_data[8].data_size = 0;
+            free(eos_state->edmac.conn_data[8].buf);
+            eos_state->edmac.conn_data[8].buf = 0;
+            eos_state->edmac.conn_data[8].data_size = 0;
             
-            free(s->edmac.conn_data[15].buf);
-            s->edmac.conn_data[15].buf = 0;
-            s->edmac.conn_data[15].data_size = 0;
+            free(eos_state->edmac.conn_data[15].buf);
+            eos_state->edmac.conn_data[15].buf = 0;
+            eos_state->edmac.conn_data[15].data_size = 0;
             
-            eos_trigger_int(s, 0x65, 1);
+            eos_trigger_int(0x65, 1);
         }
         else
         {
@@ -692,15 +688,15 @@ static void prepro_execute(EOSState *s)
         }
     }
     
-    if (s->prepro.hiv_enb == 0 || s->prepro.hiv_enb == 1)
+    if (eos_state->prepro.hiv_enb == 0 || eos_state->prepro.hiv_enb == 1)
     {
-        if (s->edmac.conn_data[15].buf)
+        if (eos_state->edmac.conn_data[15].buf)
         {
             fprintf(stderr, "[HIV] Dummy operation.\n");
-            assert(s->edmac.conn_data[15].buf);
-            free(s->edmac.conn_data[15].buf);
-            s->edmac.conn_data[15].buf = 0;
-            s->edmac.conn_data[15].data_size = 0;
+            assert(eos_state->edmac.conn_data[15].buf);
+            free(eos_state->edmac.conn_data[15].buf);
+            eos_state->edmac.conn_data[15].buf = 0;
+            eos_state->edmac.conn_data[15].data_size = 0;
         }
         else
         {
@@ -708,31 +704,31 @@ static void prepro_execute(EOSState *s)
         }
     }
 
-    if (s->prepro.def_enb == 1)
+    if (eos_state->prepro.def_enb == 1)
     {
-        if (s->edmac.conn_data[1].buf)
+        if (eos_state->edmac.conn_data[1].buf)
         {
-            int transfer_size = s->edmac.conn_data[1].data_size;
-            int old_size = s->edmac.conn_data[16].data_size;
+            int transfer_size = eos_state->edmac.conn_data[1].data_size;
+            int old_size = eos_state->edmac.conn_data[16].data_size;
             int new_size = old_size + transfer_size;
             fprintf(stderr, "[DEF] Dummy operation (copy %d bytes from <1> to <16>).\n", transfer_size);
             if (old_size) fprintf(stderr, "[DEF] Data size %d -> %d.\n", old_size, new_size);
-            s->edmac.conn_data[16].buf = realloc(s->edmac.conn_data[16].buf, new_size);
-            s->edmac.conn_data[16].data_size = new_size;
-            memcpy(s->edmac.conn_data[16].buf + old_size, s->edmac.conn_data[1].buf, transfer_size);
-            free(s->edmac.conn_data[1].buf);
-            s->edmac.conn_data[1].buf = 0;
-            s->edmac.conn_data[1].data_size = 0;
+            eos_state->edmac.conn_data[16].buf = realloc(eos_state->edmac.conn_data[16].buf, new_size);
+            eos_state->edmac.conn_data[16].data_size = new_size;
+            memcpy(eos_state->edmac.conn_data[16].buf + old_size, eos_state->edmac.conn_data[1].buf, transfer_size);
+            free(eos_state->edmac.conn_data[1].buf);
+            eos_state->edmac.conn_data[1].buf = 0;
+            eos_state->edmac.conn_data[1].data_size = 0;
         }
     }
 }
 
-unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_edmac(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
     int channel = (parm << 4) | ((address >> 8) & 0xF);
-    assert(channel < COUNT(s->edmac.ch));
+    assert(channel < COUNT(eos_state->edmac.ch));
     
     switch(address & 0xFF)
     {
@@ -743,31 +739,31 @@ unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int add
                 if (channel & 8)
                 {
                     /* read channel: data is always available */
-                    assert(edmac_do_transfer(s, channel));
+                    assert(edmac_do_transfer(channel));
                     
                     /* any pending requests on other channels?
                      * data might be available now */
-                    for (int ch = 0; ch < COUNT(s->edmac.pending); ch++)
+                    for (int ch = 0; ch < COUNT(eos_state->edmac.pending); ch++)
                     {
-                        if (s->edmac.pending[ch])
+                        if (eos_state->edmac.pending[ch])
                         {
-                            if (edmac_do_transfer(s, ch))
+                            if (edmac_do_transfer(ch))
                             {
-                                s->edmac.pending[ch] = 0;
+                                eos_state->edmac.pending[ch] = 0;
                             }
                         }
                     }
                     
                     /* some image processing modules may now have input data */
-                    prepro_execute(s);
+                    prepro_execute();
                 }
                 else
                 {
                     /* write channel: data may or may not be available right now */
-                    if (!edmac_do_transfer(s, channel))
+                    if (!edmac_do_transfer(channel))
                     {
                         /* didn't work; schedule it for later */
-                        s->edmac.pending[channel] = 1;
+                        eos_state->edmac.pending[channel] = 1;
                     }
                 }
             }
@@ -775,57 +771,57 @@ unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int add
 
         case 0x04:
             msg = "flags";
-            MMIO_VAR(s->edmac.ch[channel].flags);
+            MMIO_VAR(eos_state->edmac.ch[channel].flags);
             break;
 
         case 0x08:
             msg = "RAM address";
-            MMIO_VAR(s->edmac.ch[channel].addr);
+            MMIO_VAR(eos_state->edmac.ch[channel].addr);
             break;
 
         case 0x0C:
             msg = "yn|xn";
-            MMIO_VAR_2x16(s->edmac.ch[channel].xn, s->edmac.ch[channel].yn);
+            MMIO_VAR_2x16(eos_state->edmac.ch[channel].xn, eos_state->edmac.ch[channel].yn);
             break;
 
         case 0x10:
             msg = "yb|xb";
-            MMIO_VAR_2x16(s->edmac.ch[channel].xb, s->edmac.ch[channel].yb);
+            MMIO_VAR_2x16(eos_state->edmac.ch[channel].xb, eos_state->edmac.ch[channel].yb);
             break;
 
         case 0x14:
             msg = "ya|xa";
-            MMIO_VAR_2x16(s->edmac.ch[channel].xa, s->edmac.ch[channel].ya);
+            MMIO_VAR_2x16(eos_state->edmac.ch[channel].xa, eos_state->edmac.ch[channel].ya);
             break;
 
         case 0x18:
             msg = "off1b";
-            MMIO_VAR(s->edmac.ch[channel].off1b);
+            MMIO_VAR(eos_state->edmac.ch[channel].off1b);
             break;
 
         case 0x1C:
             msg = "off2b";
-            MMIO_VAR(s->edmac.ch[channel].off2b);
+            MMIO_VAR(eos_state->edmac.ch[channel].off2b);
             break;
 
         case 0x20:
             msg = "off1a";
-            MMIO_VAR(s->edmac.ch[channel].off1a);
+            MMIO_VAR(eos_state->edmac.ch[channel].off1a);
             break;
 
         case 0x24:
             msg = "off2a";
-            MMIO_VAR(s->edmac.ch[channel].off2a);
+            MMIO_VAR(eos_state->edmac.ch[channel].off2a);
             break;
 
         case 0x28:
             msg = "off3";
-            MMIO_VAR(s->edmac.ch[channel].off3);
+            MMIO_VAR(eos_state->edmac.ch[channel].off3);
             break;
 
         case 0x40:
             msg = "off40";
-            MMIO_VAR(s->edmac.ch[channel].off40);
+            MMIO_VAR(eos_state->edmac.ch[channel].off40);
             break;
 
         case 0x30:
@@ -844,8 +840,8 @@ unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int add
                  *   0x04 = pop?
                  *   0x10 = abort?
                  */
-                int pop_request = (s->edmac.ch[channel].flags & 0xF) == 6;
-                int abort_request = (s->edmac.ch[channel].off34 == 3);
+                int pop_request = (eos_state->edmac.ch[channel].flags & 0xF) == 6;
+                int abort_request = (eos_state->edmac.ch[channel].off34 == 3);
                 ret = (abort_request) ? 0x10 :
                       (pop_request)   ? 0x04 :
                       (channel & 8)   ? 0x02 :
@@ -855,14 +851,14 @@ unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int add
 
         case 0x34:
             msg = "off34";
-            MMIO_VAR(s->edmac.ch[channel].off34);
+            MMIO_VAR(eos_state->edmac.ch[channel].off34);
 
             if(type & MODE_WRITE)
             {
-                if (s->edmac.ch[channel].off34 == 3)
+                if (eos_state->edmac.ch[channel].off34 == 3)
                 {
                     msg = "abort request";
-                    edmac_trigger_interrupt(s, channel, 1);
+                    edmac_trigger_interrupt(channel, 1);
                 }
             }
             break;
@@ -870,14 +866,14 @@ unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int add
     
     char name[32];
     snprintf(name, sizeof(name), "EDMAC#%d", channel);
-    io_log(name, s, address, type, value, ret, msg, 0, 0);
+    io_log(name, address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
 /* EDMAC channel switch (connections) */
-unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_edmac_chsw(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     unsigned int ret = 0;
@@ -912,18 +908,18 @@ unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned in
                 (value <=  5) ? value + 8      :
                 (value <= 11) ? value + 16 + 2 :
                 (value <= 15) ? value + 32 - 4 : -1 ;
-            assert(conn < COUNT(s->edmac.conn_data));
-            assert(ch < COUNT(s->edmac.ch));
-            s->edmac.read_conn[conn] = ch;
+            assert(conn < COUNT(eos_state->edmac.conn_data));
+            assert(ch < COUNT(eos_state->edmac.ch));
+            eos_state->edmac.read_conn[conn] = ch;
             
             /* make sure this mapping is unique */
             /* (not sure how it's supposed to work, but...) */
-            for (int c = 0; c < COUNT(s->edmac.read_conn); c++)
+            for (int c = 0; c < COUNT(eos_state->edmac.read_conn); c++)
             {
-                if (c != conn && s->edmac.read_conn[c] == ch)
+                if (c != conn && eos_state->edmac.read_conn[c] == ch)
                 {
                     fprintf(stderr, "[CHSW] Warning: disabling RD#%d -> <%d>.\n", ch, c);
-                    s->edmac.read_conn[c] = 0;
+                    eos_state->edmac.read_conn[c] = 0;
                 }
             }
             
@@ -938,9 +934,9 @@ unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned in
             uint32_t conn = value;
             uint32_t ch = (address & 0x1F) >> 2;
             if (ch == 7) ch = 16;
-            assert(conn < COUNT(s->edmac.conn_data));
-            assert(ch < COUNT(s->edmac.ch));
-            s->edmac.write_conn[ch] = conn;
+            assert(conn < COUNT(eos_state->edmac.conn_data));
+            assert(ch < COUNT(eos_state->edmac.ch));
+            eos_state->edmac.write_conn[ch] = conn;
             msg = "<%d> -> WR#%d -> RAM";
             msg_arg1 = conn;
             msg_arg2 = ch;
@@ -956,9 +952,9 @@ unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned in
             uint32_t ch =
                 (pos <= 5) ? pos + 16 + 1
                            : pos + 32 - 6 ;
-            assert(conn < COUNT(s->edmac.conn_data));
-            assert(ch < COUNT(s->edmac.ch));
-            s->edmac.write_conn[ch] = conn;
+            assert(conn < COUNT(eos_state->edmac.conn_data));
+            assert(ch < COUNT(eos_state->edmac.ch));
+            eos_state->edmac.write_conn[ch] = conn;
             msg = "<%d> -> WR#%d -> RAM";
             msg_arg1 = conn;
             msg_arg2 = ch;
@@ -967,11 +963,11 @@ unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned in
     }
 
 end:
-    io_log("CHSW", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("CHSW", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
-static const char * prepro_reg_name(unsigned int addr)
+static const char *prepro_reg_name(unsigned int addr)
 {
     /* http://magiclantern.wikia.com/wiki/Register_Map#Image_PreProcessing */
     switch(addr)
@@ -1119,15 +1115,15 @@ static const char * prepro_reg_name(unsigned int addr)
     return NULL;
 }
 
-unsigned int eos_handle_prepro ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_prepro(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = prepro_reg_name(address);
+    const char *msg = prepro_reg_name(address);
     unsigned int ret = 0;
 
     switch (address & 0xFFF)
     {
         case 0x240:     /* ADMERG_INTR_EN */
-            MMIO_VAR(s->prepro.adkiz_intr_en);
+            MMIO_VAR(eos_state->prepro.adkiz_intr_en);
             break;
         
         case 0x0C8:     /* DEF_INTR_AE */
@@ -1136,38 +1132,38 @@ unsigned int eos_handle_prepro ( unsigned int parm, EOSState *s, unsigned int ad
             }
             else
             {
-                int AdKizDet_flag = (s->model->digic_version == 4) ? 0x20 : 
-                                    (s->model->digic_version == 5) ? 0x10 : 0;
+                int AdKizDet_flag = (eos_state->model->digic_version == 4) ? 0x20 : 
+                                    (eos_state->model->digic_version == 5) ? 0x10 : 0;
                 assert(AdKizDet_flag);
                 ret = AdKizDet_flag;   /* Interruppt AdKizDet */
             }
             break;
         
         case 0x180:     /* HIV_ENB */
-            MMIO_VAR(s->prepro.hiv_enb);
+            MMIO_VAR(eos_state->prepro.hiv_enb);
             break;
 
         case 0x120:     /* PACK16_ENB */
-            MMIO_VAR(s->prepro.pack16_enb);
+            MMIO_VAR(eos_state->prepro.pack16_enb);
             break;
 
         case 0x060:     /* DSUNPACK_ENB */
-            MMIO_VAR(s->prepro.dsunpack_enb);
+            MMIO_VAR(eos_state->prepro.dsunpack_enb);
             break;
 
         case 0x0A0:     /* DEF_ENB */
-            MMIO_VAR(s->prepro.def_enb);
+            MMIO_VAR(eos_state->prepro.def_enb);
             break;
     }
 
-    io_log("PREPRO", s, address, type, value, ret, msg, 0, 0);
+    io_log("PREPRO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_jpcore(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * module_name = 0;
-    const char * msg = 0;
+    const char *module_name = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     switch (parm)
@@ -1204,7 +1200,7 @@ unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int add
                 if (value & 1)
                 {
                     msg = "Start JPCORE";
-                    eos_trigger_int(s, 0x64, 10);
+                    eos_trigger_int(0x64, 10);
                 }
             }
             else
@@ -1212,7 +1208,7 @@ unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int add
                 /* EOSM: this value starts JPCORE, but fails the DCIM test */
                 //ret = 0x1010000;
 
-                if (strcmp(s->model->name, "1300D") == 0)
+                if (strcmp(eos_state->model->name, "1300D") == 0)
                 {
                     /* 1300D requires it */
                     ret = 0x1010000;
@@ -1249,7 +1245,7 @@ unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int add
             msg = "interrupt status? (70D loop)";
             ret = rand();
 
-            if (strcmp(s->model->name, "1300D") == 0)
+            if (strcmp(eos_state->model->name, "1300D") == 0)
             {
                 ret = 0x400;
             }
@@ -1288,13 +1284,13 @@ unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int add
             break;
     }
 
-    io_log(module_name, s, address, type, value, ret, msg, 0, 0);
+    io_log(module_name, address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_head ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_head(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = prepro_reg_name(address);
+    const char *msg = prepro_reg_name(address);
     unsigned int ret = 0;
     
     uint32_t bases[] = { 0, 0xC0F07048, 0xC0F0705C, 0xC0F07134, 0xC0F07148 };
@@ -1313,7 +1309,7 @@ unsigned int eos_handle_head ( unsigned int parm, EOSState *s, unsigned int addr
             {
                 if (value == 0xC)
                 {
-                    eos_trigger_int(s, interrupts[parm], 50);
+                    eos_trigger_int(interrupts[parm], 50);
                 }
             }
             break;
@@ -1324,13 +1320,13 @@ unsigned int eos_handle_head ( unsigned int parm, EOSState *s, unsigned int addr
 
     char name[32];
     snprintf(name, sizeof(name), "HEAD%d", parm);
-    io_log(name, s, address, type, value, ret, msg, 0, 0);
+    io_log(name, address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_engio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_engio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    io_log("ENGIO", s, address, type, value, 0, 0, 0, 0);
+    io_log("ENGIO", address, type, value, 0, 0, 0, 0);
     return 0;
 }
 

@@ -5,7 +5,7 @@
 
 #include "eos.h"
 
-unsigned int eos_handle_ml_helpers ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+unsigned int eos_handle_ml_helpers(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
 /** Some small engio API **/
 #define REG_PRINT_CHAR 0xC0123000

@@ -590,7 +590,6 @@ hwaddr memory_region_section_get_iotlb(CPUState *cpu,
 /* vl.c */
 extern int singlestep;
 
-void cpu_set_tb_exec_cb(void (*cb)(void *opaque, CPUState *cpu, TranslationBlock *tb),
-                        void *opaque);
+void cpu_set_tb_exec_cb(void (*cb)(CPUState *cpu, TranslationBlock *tb));
 
 #endif

@@ -19,11 +19,11 @@
 #define MPU_EPRINTF0(fmt, ...) EPRINTF("",      EOS_LOG_MPU, fmt, ## __VA_ARGS__)
 
 // Forward declare static functions
-static void mpu_send_next_spell(EOSState *s);
-static void mpu_enqueue_spell(EOSState *s, int spell_set, int out_spell, uint16_t * copied_spell);
-static void mpu_interpret_command(EOSState *s);
+static void mpu_send_next_spell(void);
+static void mpu_enqueue_spell(int spell_set, int out_spell, uint16_t *copied_spell);
+static void mpu_interpret_command(void);
 
-static struct mpu_init_spell * mpu_init_spells = 0;
+static struct mpu_init_spell *mpu_init_spells = 0;
 static int mpu_init_spell_count = 0;
 
 /**
@@ -54,7 +54,7 @@ static int mpu_init_spell_count = 0;
 
 #include "mpu_spells/known_spells.h"
 
-static const char * mpu_spell_generic_description(uint16_t * spell)
+static const char *mpu_spell_generic_description(uint16_t *spell)
 {
     for (int i = 0; i < COUNT(known_spells); i++)
     {
@@ -76,43 +76,43 @@ static const char * mpu_spell_generic_description(uint16_t * spell)
     return 0;
 }
 
-static void mpu_send_next_spell(EOSState *s)
+static void mpu_send_next_spell(void)
 {
-    if (s->mpu.sq_head != s->mpu.sq_tail)
+    if (eos_state->mpu.sq_head != eos_state->mpu.sq_tail)
     {
         /* get next spell from the queue */
         /* note: send_queue always contains copies of messages
          * allocated on mpu_enqueue_spell* and freed here */
-        free(s->mpu.out_spell);
-        s->mpu.out_spell = s->mpu.send_queue[s->mpu.sq_head];
-        s->mpu.sq_head = (s->mpu.sq_head+1) & (COUNT(s->mpu.send_queue)-1);
+        free(eos_state->mpu.out_spell);
+        eos_state->mpu.out_spell = eos_state->mpu.send_queue[eos_state->mpu.sq_head];
+        eos_state->mpu.sq_head = (eos_state->mpu.sq_head+1) & (COUNT(eos_state->mpu.send_queue)-1);
         MPU_EPRINTF("Sending : ");
 
-        for (int i = 0; i < s->mpu.out_spell[0]; i++)
+        for (int i = 0; i < eos_state->mpu.out_spell[0]; i++)
         {
-            MPU_EPRINTF0("%02x ", s->mpu.out_spell[i]);
+            MPU_EPRINTF0("%02x ", eos_state->mpu.out_spell[i]);
         }
 
-        const char * desc = mpu_spell_generic_description(s->mpu.out_spell);
+        const char *desc = mpu_spell_generic_description(eos_state->mpu.out_spell);
         MPU_EPRINTF0(" (%s)\n", desc ? desc : KLRED"unnamed"KRESET);
 
-        s->mpu.out_char = -2;
+        eos_state->mpu.out_char = -2;
 
         /* request a SIO3 interrupt */
         /* use 100 here if brute-forcing MPU spells, to avoid overflowing Canon buffers */
-        eos_trigger_int(s, s->model->mpu_sio3_interrupt, 0);
+        eos_trigger_int(eos_state->model->mpu_sio3_interrupt, 0);
     }
     else
     {
         MPU_DPRINTF("Nothing more to send.\n");
-        s->mpu.sending = 0;
+        eos_state->mpu.sending = 0;
     }
 }
 
-static uint16_t * copy_n_subst_spell(uint16_t * spell, uint16_t * template, uint16_t * received)
+static uint16_t *copy_n_subst_spell(uint16_t *spell, uint16_t *template, uint16_t *received)
 {
     int len = spell[0] * sizeof(spell[0]);
-    uint16_t * copy = malloc(len);
+    uint16_t *copy = malloc(len);
     assert(copy);
     memcpy(copy, spell, len);
     for (int i = 0; i < spell[0]; i++)
@@ -135,14 +135,14 @@ static uint16_t * copy_n_subst_spell(uint16_t * spell, uint16_t * template, uint
     return copy;
 }
 
-static void mpu_enqueue_spell(EOSState *s, int spell_set, int out_spell, uint16_t * copied_spell)
+static void mpu_enqueue_spell(int spell_set, int out_spell, uint16_t *copied_spell)
 {
-    int next_tail = (s->mpu.sq_tail+1) & (COUNT(s->mpu.send_queue)-1);
-    if (next_tail != s->mpu.sq_head)
+    int next_tail = (eos_state->mpu.sq_tail+1) & (COUNT(eos_state->mpu.send_queue)-1);
+    if (next_tail != eos_state->mpu.sq_head)
     {
         MPU_DPRINTF("Queueing spell #%d.%d\n", spell_set+1, out_spell+1);
-        s->mpu.send_queue[s->mpu.sq_tail] = copied_spell;
-        s->mpu.sq_tail = next_tail;
+        eos_state->mpu.send_queue[eos_state->mpu.sq_tail] = copied_spell;
+        eos_state->mpu.sq_tail = next_tail;
     }
     else
     {
@@ -150,10 +150,10 @@ static void mpu_enqueue_spell(EOSState *s, int spell_set, int out_spell, uint16_
     }
 }
 
-static void mpu_enqueue_spell_generic(EOSState *s, uint16_t * spell)
+static void mpu_enqueue_spell_generic(uint16_t *spell)
 {
-    int next_tail = (s->mpu.sq_tail+1) & (COUNT(s->mpu.send_queue)-1);
-    if (next_tail != s->mpu.sq_head)
+    int next_tail = (eos_state->mpu.sq_tail+1) & (COUNT(eos_state->mpu.send_queue)-1);
+    if (next_tail != eos_state->mpu.sq_head)
     {
         MPU_DPRINTF("Queueing spell: ");
         for (int i = 0; i < spell[0]; i++)
@@ -161,8 +161,8 @@ static void mpu_enqueue_spell_generic(EOSState *s, uint16_t * spell)
             MPU_DPRINTF0("%02x ", spell[i]);
         }
         MPU_DPRINTF0("\n");
-        s->mpu.send_queue[s->mpu.sq_tail] = copy_n_subst_spell(spell, 0, 0);
-        s->mpu.sq_tail = next_tail;
+        eos_state->mpu.send_queue[eos_state->mpu.sq_tail] = copy_n_subst_spell(spell, 0, 0);
+        eos_state->mpu.sq_tail = next_tail;
     }
     else
     {
@@ -170,18 +170,18 @@ static void mpu_enqueue_spell_generic(EOSState *s, uint16_t * spell)
     }
 }
 
-static void mpu_start_sending(EOSState *s)
+static void mpu_start_sending(void)
 {
-    if (!s->mpu.sending && s->mpu.sq_head != s->mpu.sq_tail)
+    if (!eos_state->mpu.sending && eos_state->mpu.sq_head != eos_state->mpu.sq_tail)
     {
-        s->mpu.sending = 1;
+        eos_state->mpu.sending = 1;
         
         /* request a MREQ interrupt */
-        eos_trigger_int(s, s->model->mpu_mreq_interrupt, 0);
+        eos_trigger_int(eos_state->model->mpu_mreq_interrupt, 0);
     }
 }
 
-static int match_spell(uint16_t * received, uint16_t * in_spell)
+static int match_spell(uint16_t *received, uint16_t *in_spell)
 {
     int n = MIN(in_spell[0], received[0]);
 
@@ -239,13 +239,13 @@ static void request_shutdown(void)
     qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
 }
 
-static void mpu_interpret_command(EOSState *s)
+static void mpu_interpret_command(void)
 {
     MPU_EPRINTF("Received: ");
     int i;
-    for (i = 0; i < s->mpu.recv_index; i++)
+    for (i = 0; i < eos_state->mpu.recv_index; i++)
     {
-        MPU_EPRINTF0("%02x ", s->mpu.recv_buffer[i]);
+        MPU_EPRINTF0("%02x ", eos_state->mpu.recv_buffer[i]);
     }
     
     /* some spells may repeat; attempt to follow the sequence
@@ -253,9 +253,9 @@ static void mpu_interpret_command(EOSState *s)
     static int spell_set = 0;
     for (int k = 0; k < mpu_init_spell_count; k++, spell_set = (spell_set+1) % mpu_init_spell_count)
     {
-        if (match_spell(s->mpu.recv_buffer+1, mpu_init_spells[spell_set].in_spell+1))
+        if (match_spell(eos_state->mpu.recv_buffer+1, mpu_init_spells[spell_set].in_spell+1))
         {
-            const char * desc = (mpu_init_spells[spell_set].description)
+            const char *desc = (mpu_init_spells[spell_set].description)
                 ? mpu_init_spells[spell_set].description
                 : mpu_spell_generic_description(mpu_init_spells[spell_set].in_spell);
 
@@ -265,14 +265,14 @@ static void mpu_interpret_command(EOSState *s)
             for (out_spell = 0; mpu_init_spells[spell_set].out_spells[out_spell][0]; out_spell++)
             {
                 /* copy and replace (substitute) any arguments */
-                uint16_t * reply = copy_n_subst_spell(
+                uint16_t *reply = copy_n_subst_spell(
                     mpu_init_spells[spell_set].out_spells[out_spell],
                     mpu_init_spells[spell_set].in_spell,
-                    s->mpu.recv_buffer
+                    eos_state->mpu.recv_buffer
                 );
-                mpu_enqueue_spell(s, spell_set, out_spell, reply);
+                mpu_enqueue_spell(spell_set, out_spell, reply);
             }
-            mpu_start_sending(s);
+            mpu_start_sending();
 
             if (mpu_init_spells[spell_set].out_spells[out_spell][1] == MPU_SHUTDOWN)
             {
@@ -285,41 +285,41 @@ static void mpu_interpret_command(EOSState *s)
         }
     }
 
-    const char * desc = mpu_spell_generic_description(s->mpu.recv_buffer);
+    const char *desc = mpu_spell_generic_description(eos_state->mpu.recv_buffer);
 
     MPU_EPRINTF0(" ("KLRED"unknown - %s"KRESET")\n", desc ? desc : "unnamed");
 }
 
-void mpu_handle_sio3_interrupt(EOSState *s)
+void mpu_handle_sio3_interrupt(void)
 {
-    if (s->mpu.sending)
+    if (eos_state->mpu.sending)
     {
-        int num_chars = s->mpu.out_spell[0];
+        int num_chars = eos_state->mpu.out_spell[0];
         
         if (num_chars)
         {
             /* next two chars */
-            s->mpu.out_char += 2;
+            eos_state->mpu.out_char += 2;
             
-            if (s->mpu.out_char < num_chars)
+            if (eos_state->mpu.out_char < num_chars)
             {
                 MPU_VPRINTF("Sending spell: chars %d & %d out of %d\n", 
-                    s->mpu.out_char+1, s->mpu.out_char+2,
+                    eos_state->mpu.out_char+1, eos_state->mpu.out_char+2,
                     num_chars
                 );
                 
-                if (s->mpu.out_char + 2 < num_chars)
+                if (eos_state->mpu.out_char + 2 < num_chars)
                 {
-                    eos_trigger_int(s, s->model->mpu_sio3_interrupt, 0);   /* SIO3 */
+                    eos_trigger_int(eos_state->model->mpu_sio3_interrupt, 0);   /* SIO3 */
                 }
                 else
                 {
                     MPU_DPRINTF("spell finished\n");
 
-                    if (s->mpu.sq_head != s->mpu.sq_tail)
+                    if (eos_state->mpu.sq_head != eos_state->mpu.sq_tail)
                     {
                         MPU_DPRINTF("Requesting next spell\n");
-                        eos_trigger_int(s, s->model->mpu_mreq_interrupt, 1);   /* MREQ */
+                        eos_trigger_int(eos_state->model->mpu_mreq_interrupt, 1);   /* MREQ */
                     }
                     else
                     {
@@ -327,34 +327,34 @@ void mpu_handle_sio3_interrupt(EOSState *s)
                         MPU_DPRINTF("spells finished\n");
                         
                         /* we have two more chars to send */
-                        s->mpu.sending = 2;
+                        eos_state->mpu.sending = 2;
                     }
                 }
             }
         }
     }
 
-    if (s->mpu.receiving)
+    if (eos_state->mpu.receiving)
     {
-        if (s->mpu.recv_index < s->mpu.recv_buffer[0])
+        if (eos_state->mpu.recv_index < eos_state->mpu.recv_buffer[0])
         {
             /* more data to receive */
             MPU_DPRINTF("Request more data\n");
-            eos_trigger_int(s, s->model->mpu_sio3_interrupt, 0);   /* SIO3 */
+            eos_trigger_int(eos_state->model->mpu_sio3_interrupt, 0);   /* SIO3 */
         }
     }
 }
 
-void mpu_handle_mreq_interrupt(EOSState *s)
+void mpu_handle_mreq_interrupt(void)
 {
-    if (s->mpu.sending)
+    if (eos_state->mpu.sending)
     {
-        mpu_send_next_spell(s);
+        mpu_send_next_spell();
     }
     
-    if (s->mpu.receiving)
+    if (eos_state->mpu.receiving)
     {
-        if (s->mpu.recv_index == 0)
+        if (eos_state->mpu.recv_index == 0)
         {
             MPU_DPRINTF("receiving next message\n");
         }
@@ -364,11 +364,11 @@ void mpu_handle_mreq_interrupt(EOSState *s)
             /* it appears to be harmless,  but I'm not sure what happens with more than 1 message queued */
             MPU_DPRINTF("next message was started in SIO3\n");
         }
-        eos_trigger_int(s, s->model->mpu_sio3_interrupt, 0);   /* SIO3 */
+        eos_trigger_int(eos_state->model->mpu_sio3_interrupt, 0);   /* SIO3 */
     }
 }
 
-unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_mpu(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     /* C022009C - MPU request/status
      * - set to 0x46 at startup
@@ -384,26 +384,26 @@ unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address
      */
     
     int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
     int receive_finished = 0;
 
     if(type & MODE_WRITE)
     {
-        assert(address == s->model->mpu_request_register);
+        assert(address == eos_state->model->mpu_request_register);
 
-        int prev_value = s->mpu.status;
-        s->mpu.status = value;
+        int prev_value = eos_state->mpu.status;
+        eos_state->mpu.status = value;
         
-        if (value & s->model->mpu_request_bitmask)
+        if (value & eos_state->model->mpu_request_bitmask)
         {
-            if (s->mpu.receiving)
+            if (eos_state->mpu.receiving)
             {
-                if (s->mpu.recv_index && s->mpu.recv_index == s->mpu.recv_buffer[0])
+                if (eos_state->mpu.recv_index && eos_state->mpu.recv_index == eos_state->mpu.recv_buffer[0])
                 {
                     msg = "Receive finished";
-                    s->mpu.receiving = 0;
+                    eos_state->mpu.receiving = 0;
                     receive_finished = 1;
                 }
                 else
@@ -411,7 +411,7 @@ unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address
                     msg = "Unknown request while receiving";
                 }
             }
-            else if (s->mpu.sending)
+            else if (eos_state->mpu.sending)
             {
                 msg = "Unknown request while sending";
             }
@@ -423,39 +423,39 @@ unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address
                 }
             }
         }
-        else if (prev_value & s->model->mpu_request_bitmask)
+        else if (prev_value & eos_state->model->mpu_request_bitmask)
         {
             /* receive request: transition of bit (1<<1) from high to low */
             msg = "Receive request %s";
             msg_arg1 = (intptr_t) "";
             
-            if (s->mpu.receiving)
+            if (eos_state->mpu.receiving)
             {
                 msg_arg1 = (intptr_t) "(I'm busy receiving stuff!)";
             }
-            else if (s->mpu.sending)
+            else if (eos_state->mpu.sending)
             {
                 msg_arg1 = (intptr_t) "(I'm busy sending stuff, but I'll try!)";
-                s->mpu.receiving = 1;
-                s->mpu.recv_index = 0;
+                eos_state->mpu.receiving = 1;
+                eos_state->mpu.recv_index = 0;
             }
             else
             {
-                s->mpu.receiving = 1;
-                s->mpu.recv_index = 0;
-                eos_trigger_int(s, s->model->mpu_mreq_interrupt, 0);   /* MREQ */
+                eos_state->mpu.receiving = 1;
+                eos_state->mpu.recv_index = 0;
+                eos_trigger_int(eos_state->model->mpu_mreq_interrupt, 0);   /* MREQ */
                 /* next steps in eos_handle_mreq -> mpu_handle_mreq_interrupt */
             }
         }
     }
     else
     {
-        assert(address == s->model->mpu_status_register);
+        assert(address == eos_state->model->mpu_status_register);
 
-        if (s->mpu.sending == 2)
+        if (eos_state->mpu.sending == 2)
         {
             /* last two chars sent, finished */
-            s->mpu.sending = 0;
+            eos_state->mpu.sending = 0;
         }
 
         /* actual return value doesn't seem to matter much
@@ -464,48 +464,48 @@ unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address
          * the following is just a guess that hopefully matches the D4/5 hardware
          */
 
-        ret = (s->mpu.sending) ? 1 : 0;
+        ret = (eos_state->mpu.sending) ? 1 : 0;
 
-        if (s->model->mpu_request_register == s->model->mpu_status_register)
+        if (eos_state->model->mpu_request_register == eos_state->model->mpu_status_register)
         {
-            ret |= s->mpu.status & ~1;
+            ret |= eos_state->mpu.status & ~1;
         }
 
         msg = "status (sending=%d, receiving=%d)";
-        msg_arg1 = s->mpu.sending;
-        msg_arg2 = s->mpu.receiving;
+        msg_arg1 = eos_state->mpu.sending;
+        msg_arg2 = eos_state->mpu.receiving;
     }
 
     if (qemu_loglevel_mask(EOS_LOG_MPU))
     {
-        io_log("MPU", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log("MPU", address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
 
     if (receive_finished)
     {
-        mpu_interpret_command(s);
+        mpu_interpret_command();
     }
     
     return ret;
 }
 
-static int mpu_handle_get_data(EOSState *s, int *hi, int *lo)
+static int mpu_handle_get_data(int *hi, int *lo)
 {
-    if (s->mpu.out_spell &&
-        s->mpu.out_char >= 0 &&
-        s->mpu.out_char < s->mpu.out_spell[0])
+    if (eos_state->mpu.out_spell &&
+        eos_state->mpu.out_char >= 0 &&
+        eos_state->mpu.out_char < eos_state->mpu.out_spell[0])
     {
-        *hi = s->mpu.out_spell[s->mpu.out_char];
-        *lo = s->mpu.out_spell[s->mpu.out_char+1];
+        *hi = eos_state->mpu.out_spell[eos_state->mpu.out_char];
+        *lo = eos_state->mpu.out_spell[eos_state->mpu.out_char+1];
         return 1;
     }
     return 0;
 }
 
-unsigned int eos_handle_sio3( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sio3(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
 
@@ -548,7 +548,7 @@ unsigned int eos_handle_sio3( unsigned int parm, EOSState *s, unsigned int addre
                 if (value == 0)
                 {
                     msg = "ISR started";
-                    mpu_handle_sio3_interrupt(s);
+                    mpu_handle_sio3_interrupt();
                 }
             }
             break;
@@ -556,30 +556,30 @@ unsigned int eos_handle_sio3( unsigned int parm, EOSState *s, unsigned int addre
         case 0x18:  /* C0820318 - data sent to MPU */
             if(type & MODE_WRITE)
             {
-                if (s->mpu.receiving)
+                if (eos_state->mpu.receiving)
                 {
                     msg = "Data to MPU, at index %d %s";
-                    msg_arg1 = s->mpu.recv_index;
+                    msg_arg1 = eos_state->mpu.recv_index;
                     msg_arg2 = (intptr_t) "";
                     
-                    if (s->mpu.recv_index == 0 && value == 0)
+                    if (eos_state->mpu.recv_index == 0 && value == 0)
                     {
                         /* fixme: sometimes it gets out of sync
                          * ignoring null values at index 0 appears to fix it... */
                         msg_arg2 = (intptr_t) "(empty header!)";
                         //assert(0);
                     }
-                    else if (s->mpu.recv_index + 2 < COUNT(s->mpu.recv_buffer))
+                    else if (eos_state->mpu.recv_index + 2 < COUNT(eos_state->mpu.recv_buffer))
                     {
-                        s->mpu.recv_buffer[s->mpu.recv_index++] = (value >> 8) & 0xFF;
-                        s->mpu.recv_buffer[s->mpu.recv_index++] = (value >> 0) & 0xFF;
+                        eos_state->mpu.recv_buffer[eos_state->mpu.recv_index++] = (value >> 8) & 0xFF;
+                        eos_state->mpu.recv_buffer[eos_state->mpu.recv_index++] = (value >> 0) & 0xFF;
                     }
                     else
                     {
                         msg_arg2 = (intptr_t) "(overflow!)";
                     }
                 }
-                else if (s->mpu.sending && value == 0)
+                else if (eos_state->mpu.sending && value == 0)
                 {
                     msg = "Dummy data to MPU";
                 }
@@ -599,17 +599,17 @@ unsigned int eos_handle_sio3( unsigned int parm, EOSState *s, unsigned int addre
             }
             else
             {
-                if (s->mpu.sending)
+                if (eos_state->mpu.sending)
                 {
                     int hi = 0, lo = 0;
-                    if (mpu_handle_get_data(s, &hi, &lo)) {
+                    if (mpu_handle_get_data(&hi, &lo)) {
                         /* 40D uses 8-bit reads (fixme: cleaner way to handle this) */
                         ret = ((hi << 8) | lo) >> ((address & 1) ? 8 : 0);
                         msg = "Data from MPU";
                     } else {
                         msg = "From MPU -> out of range (char %d of %d)";
-                        msg_arg1 = s->mpu.out_char;
-                        msg_arg2 = s->mpu.out_spell[0];
+                        msg_arg1 = eos_state->mpu.out_char;
+                        msg_arg2 = eos_state->mpu.out_spell[0];
                         ret = 0;
                     }
                 }
@@ -624,19 +624,19 @@ unsigned int eos_handle_sio3( unsigned int parm, EOSState *s, unsigned int addre
 
     if (qemu_loglevel_mask(EOS_LOG_MPU))
     {
-        io_log("SIO3", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log("SIO3", address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
 
-unsigned int eos_handle_mreq( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_mreq(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
     
-    if (address == s->model->mpu_control_register)
+    if (address == eos_state->model->mpu_control_register)
     {
         /* C020302C */
         /* set to 0x1C at the beginning of MREQ ISR, and to 0x0C at startup */
@@ -650,7 +650,7 @@ unsigned int eos_handle_mreq( unsigned int parm, EOSState *s, unsigned int addre
             else if (value == 0x1C)
             {
                 msg_arg1 = (intptr_t) "(ISR started)";
-                mpu_handle_mreq_interrupt(s);
+                mpu_handle_mreq_interrupt();
             }
         }
         else
@@ -661,27 +661,27 @@ unsigned int eos_handle_mreq( unsigned int parm, EOSState *s, unsigned int addre
 
         if (qemu_loglevel_mask(EOS_LOG_MPU))
         {
-            io_log("MREQ", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+            io_log("MREQ", address, type, value, ret, msg, msg_arg1, msg_arg2);
         }
         return ret;
     }
 
     /* not handled here; unknown */
-    io_log("???", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("???", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
 #include "mpu_spells/button_codes.h"
 
-static int* button_codes = 0;
+static int *button_codes = 0;
 
 /* http://www.marjorie.de/ps2/scancode-set1.htm */
 /* to create a group of keys, simply name only the first key from the group */
 static struct {
     int scancode;
     int gui_code;
-    const char * pc_key_name;
-    const char * cam_key_name;
+    const char *pc_key_name;
+    const char *cam_key_name;
 } key_map[] = {
     { 0xE048,   BGMT_PRESS_UP,          "Arrow keys",   "Navigation",                   },
     { 0xE04B,   BGMT_PRESS_LEFT,                                                        },
@@ -945,7 +945,7 @@ static void show_keyboard_help(void)
     MPU_EPRINTF0("\n");
 }
 
-void mpu_send_keypress(EOSState *s, int keycode)
+void mpu_send_keypress(int keycode)
 {
     /* good news: most MPU button codes appear to be the same across all cameras :) */
     int key = translate_scancode(keycode);
@@ -967,9 +967,9 @@ void mpu_send_keypress(EOSState *s, int keycode)
 
         #define MPU_SEND_SPELLS(spells) \
             for (int i = 0; i < COUNT(spells); i++) { \
-                mpu_enqueue_spell_generic(s, spells[i]); \
+                mpu_enqueue_spell_generic(spells[i]); \
             } \
-            mpu_start_sending(s); \
+            mpu_start_sending(); \
 
         switch (key & 0xFFFF)
         {
@@ -1042,7 +1042,7 @@ void mpu_send_keypress(EOSState *s, int keycode)
 
                 for (int k = 0; k < mpu_init_spell_count && mpu_init_spells[0].out_spells[k][0]; k++)
                 {
-                    uint16_t * spell = mpu_init_spells[0].out_spells[k];
+                    uint16_t *spell = mpu_init_spells[0].out_spells[k];
 
                     if (spell[2] == 0x02 && (spell[3] == 0x00 || spell[3] == 0x0e))
                     {
@@ -1055,8 +1055,8 @@ void mpu_send_keypress(EOSState *s, int keycode)
 
                         /* not 100% sure it's right */
                         spell[4] = spell[5] = new_mode;
-                        mpu_enqueue_spell_generic(s, spell);
-                        mpu_start_sending(s);
+                        mpu_enqueue_spell_generic(spell);
+                        mpu_start_sending();
 
                         break;
                     }
@@ -1066,12 +1066,12 @@ void mpu_send_keypress(EOSState *s, int keycode)
 
             case MPU_ENTER_MOVIE_MODE:
             {
-                if (s->model->dedicated_movie_mode)
+                if (eos_state->model->dedicated_movie_mode)
                 {
                     /* fixme: duplicate code */
                     for (int k = 0; k < mpu_init_spell_count && mpu_init_spells[0].out_spells[k][0]; k++)
                     {
-                        uint16_t * spell = mpu_init_spells[0].out_spells[k];
+                        uint16_t *spell = mpu_init_spells[0].out_spells[k];
 
                         if (spell[2] == 0x02 && (spell[3] == 0x00 || spell[3] == 0x0e))
                         {
@@ -1081,8 +1081,8 @@ void mpu_send_keypress(EOSState *s, int keycode)
 
                             MPU_EPRINTF("using reply #1.%d for mode switch (%d -> %d).\n", k+1, old_mode, new_mode);
                             spell[4] = spell[5] = new_mode;
-                            mpu_enqueue_spell_generic(s, spell);
-                            mpu_start_sending(s);
+                            mpu_enqueue_spell_generic(spell);
+                            mpu_start_sending();
 
                             break;
                         }
@@ -1138,22 +1138,18 @@ void mpu_send_keypress(EOSState *s, int keycode)
     
     /* todo: check whether a race condition is still possible */
     /* (is this function called from the same thread as I/O handlers or not?) */
-    mpu_enqueue_spell_generic(s, mpu_keypress_spell);
-    mpu_start_sending(s);
+    mpu_enqueue_spell_generic(mpu_keypress_spell);
+    mpu_start_sending();
 }
 
-static void mpu_send_powerdown(Notifier * notifier, void * null)
+static void mpu_send_powerdown(Notifier *notifier, void *null)
 {
-    EOSState *s = (EOSState *)((void *)notifier
-        - offsetof(MPUState, powerdown_notifier)
-        - offsetof(EOSState, mpu));
-
     /* same as F10 */
-    mpu_send_keypress(s, 0x0044);
-    mpu_send_keypress(s, 0x00C4);
+    mpu_send_keypress(0x0044);
+    mpu_send_keypress(0x00C4);
 }
 
-static void mpu_check_duplicate_spells(EOSState *s)
+static void mpu_check_duplicate_spells(void)
 {
     for (int i = 0; i < mpu_init_spell_count; i++)
     {
@@ -1207,16 +1203,16 @@ static void mpu_check_duplicate_spells(EOSState *s)
     }
 }
 
-void mpu_spells_init(EOSState *s)
+void mpu_spells_init(void)
 {
 #define MPU_SPELL_SET(cam) \
-    if (strcmp(s->model->name, #cam) == 0) { \
+    if (strcmp(eos_state->model->name, #cam) == 0) { \
         mpu_init_spells = mpu_init_spells_##cam; \
         mpu_init_spell_count = COUNT(mpu_init_spells_##cam); \
     }
 
 #define MPU_SPELL_SET_OTHER_CAM(cam1,cam2) \
-    if (strcmp(s->model->name, #cam1) == 0) { \
+    if (strcmp(eos_state->model->name, #cam1) == 0) { \
         mpu_init_spells = mpu_init_spells_##cam2; \
         mpu_init_spell_count = COUNT(mpu_init_spells_##cam2); \
     }
@@ -1248,7 +1244,7 @@ void mpu_spells_init(EOSState *s)
 
     if (!mpu_init_spell_count)
     {
-        MPU_EPRINTF("FIXME: using generic MPU spells for %s.\n", s->model->name);
+        MPU_EPRINTF("FIXME: using generic MPU spells for %s.\n", eos_state->model->name);
         mpu_init_spells = mpu_init_spells_generic;
         mpu_init_spell_count = COUNT(mpu_init_spells_generic);
         /* how to get them: http://magiclantern.fm/forum/index.php?topic=2864.msg166938#msg166938 */
@@ -1256,20 +1252,20 @@ void mpu_spells_init(EOSState *s)
 
     if (0)
     {
-        MPU_EPRINTF("WARNING: using bruteforce MPU spells for %s.\n", s->model->name);
+        MPU_EPRINTF("WARNING: using bruteforce MPU spells for %s.\n", eos_state->model->name);
         mpu_init_spells = mpu_init_spells_bruteforce;
         mpu_init_spell_count = COUNT(mpu_init_spells_bruteforce);
     }
 
-    mpu_check_duplicate_spells(s);
+    mpu_check_duplicate_spells();
 
 #define MPU_BUTTON_CODES(cam) \
-    if (strcmp(s->model->name, #cam) == 0) { \
+    if (strcmp(eos_state->model->name, #cam) == 0) { \
         button_codes = button_codes_##cam; \
     }
 
 #define MPU_BUTTON_CODES_OTHER_CAM(cam1,cam2) \
-    if (strcmp(s->model->name, #cam1) == 0) { \
+    if (strcmp(eos_state->model->name, #cam1) == 0) { \
         button_codes = button_codes_##cam2; \
     }
 
@@ -1298,7 +1294,7 @@ void mpu_spells_init(EOSState *s)
 
     if (!button_codes)
     {
-        MPU_EPRINTF("FIXME: no MPU button codes for %s.\n", s->model->name);
+        MPU_EPRINTF("FIXME: no MPU button codes for %s.\n", eos_state->model->name);
         /* run qemu-2.x.x/hw/eos/mpu_spells/make_button_codes.sh to get them */
         return;
     }
@@ -1317,7 +1313,7 @@ void mpu_spells_init(EOSState *s)
 
     for (int i = 0; i < COUNT(key_map); i++)
     {
-        if (key_map[i].gui_code == MPU_ENTER_MOVIE_MODE && s->model->dedicated_movie_mode == -1)
+        if (key_map[i].gui_code == MPU_ENTER_MOVIE_MODE && eos_state->model->dedicated_movie_mode == -1)
         {
             /* no movie mode on this model */
             key_map[i].gui_code = MPU_EVENT_DISABLED;
@@ -1326,8 +1322,8 @@ void mpu_spells_init(EOSState *s)
 
     show_keyboard_help();
 
-    s->mpu.powerdown_notifier.notify = mpu_send_powerdown;
-    qemu_register_powerdown_notifier(&s->mpu.powerdown_notifier);
+    eos_state->mpu.powerdown_notifier.notify = mpu_send_powerdown;
+    qemu_register_powerdown_notifier(&eos_state->mpu.powerdown_notifier);
 
     atexit(clean_shutdown_check);
 }

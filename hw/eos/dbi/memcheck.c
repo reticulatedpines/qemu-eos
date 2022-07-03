@@ -189,7 +189,7 @@ static uint64_t mem_status_checksum(uint64_t src, uint64_t size)
     return check;
 }
 
-static int is_heap_routine(EOSState *s, uint32_t pc)
+static int is_heap_routine(uint32_t pc)
 {
     /* malloc/free are allowed to use after free */
 
@@ -213,7 +213,7 @@ static int is_heap_routine(EOSState *s, uint32_t pc)
     return 0;
 }
 
-static int is_memcpy(EOSState *s, uint32_t pc)
+static int is_memcpy(uint32_t pc)
 {
     if ((pc >= ml_memcpy && pc <= ml_memcpy + ml_memcpy_size) ||
         (pc >= stubs.memcpy[0] && pc <= stubs.memcpy_end[0])  ||
@@ -229,13 +229,13 @@ static int is_memcpy(EOSState *s, uint32_t pc)
 
 static void diagnose_addr(uint32_t addr);
 
-static void print_location_KLRED(EOSState *s, uint32_t pc, uint32_t lr)
+static void print_location_KLRED(uint32_t pc, uint32_t lr)
 {
-    eos_callstack_indent(s);
-    eos_print_location(s, pc, lr, KLRED, " ");
+    eos_callstack_indent();
+    eos_print_location(pc, lr, KLRED, " ");
 }
 
-void eos_memcheck_log_mem(EOSState *s, hwaddr addr, uint64_t value, uint32_t size, int flags)
+void eos_memcheck_log_mem(hwaddr addr, uint64_t value, uint32_t size, int flags)
 {
     int is_write = flags & 1;
     int is_read = !is_write;
@@ -246,15 +246,15 @@ void eos_memcheck_log_mem(EOSState *s, hwaddr addr, uint64_t value, uint32_t siz
     /* fixme: only first byte is checked */
     if (!no_check &&
         is_freed(addr) &&                   /* check for use after free */
-        (is_write || !is_memcpy(s, pc)) &&  /* don't check memcpy for reads */
-        !is_heap_routine(s, pc))            /* don't check malloc/free routines */
+        (is_write || !is_memcpy(pc)) &&  /* don't check memcpy for reads */
+        !is_heap_routine(pc))            /* don't check malloc/free routines */
     {
-        print_location_KLRED(s, pc, lr);
+        print_location_KLRED(pc, lr);
         fprintf(stderr, "address %x %s after free (%x)" KRESET "\n",
             (int)addr, is_write ? "written" : "read", (int)value
         );
         diagnose_addr(addr);
-        eos_callstack_print(s, KLRED"Call stack: ", " ", KRESET"\n"); 
+        eos_callstack_print(KLRED"Call stack: ", " ", KRESET"\n"); 
     }
 
     /* only interrupts and other TCM code are allowed to use the TCM */
@@ -280,11 +280,11 @@ void eos_memcheck_log_mem(EOSState *s, hwaddr addr, uint64_t value, uint32_t siz
                 }
             }
         }
-        print_location_KLRED(s, pc, lr);
+        print_location_KLRED(pc, lr);
         fprintf(stderr, "address %x %s TCM (%x)"KRESET"\n",
             (int)addr, is_write ? "written to" : "read from", (int)value
         );
-        eos_callstack_print(s, KLRED"Call stack: ", " ", KRESET"\n"); 
+        eos_callstack_print(KLRED"Call stack: ", " ", KRESET"\n"); 
 ignore:;
     }
 
@@ -295,15 +295,15 @@ ignore:;
         if (!no_check &&
             is_uninitialized(addr) &&
             !is_freed(addr) &&
-            !is_memcpy(s, pc) &&
-            !is_heap_routine(s, pc))
+            !is_memcpy(pc) &&
+            !is_heap_routine(pc))
         {
-            print_location_KLRED(s, pc, lr);
+            print_location_KLRED(pc, lr);
             fprintf(stderr, "address %x uninitialized (read %x)"KRESET"\n",
                 (int)addr, (int)value
             );
             diagnose_addr(addr);
-            eos_callstack_print(s, KLRED"Call stack: ", " ", KRESET"\n"); 
+            eos_callstack_print(KLRED"Call stack: ", " ", KRESET"\n"); 
         }
     }
     else /* write */
@@ -344,7 +344,7 @@ struct malloc_list_item malloc_list[16384] = {{0}};
 static int malloc_idx = 0;  /* index in malloc_list */
 static int malloc_num = 0;  /* number of malloc calls */
 
-static void exec_log_malloc(EOSState *s, uint32_t pc, CPUARMState *env)
+static void exec_log_malloc(uint32_t pc, CPUARMState *env)
 {
     int lr = env->regs[14];
 
@@ -363,8 +363,8 @@ static void exec_log_malloc(EOSState *s, uint32_t pc, CPUARMState *env)
         malloc_size[id] = env->regs[0];
 
         if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-            eos_callstack_indent(s);
-            eos_print_location(s, pc, lr, "", " ");
+            eos_callstack_indent();
+            eos_print_location(pc, lr, "", " ");
             fprintf(stderr, "malloc(%x)\n", malloc_size[id]);
         }
     }
@@ -375,8 +375,8 @@ static void exec_log_malloc(EOSState *s, uint32_t pc, CPUARMState *env)
         {
             int malloc_ptr = env->regs[0];
             if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-                eos_callstack_indent(s);
-                eos_print_location(s, pc, lr, "", " ");
+                eos_callstack_indent();
+                eos_print_location(pc, lr, "", " ");
                 fprintf(stderr, "malloc => %x\n", malloc_ptr);
             }
             mem_set_status(malloc_ptr, malloc_ptr + malloc_size[id], MS_NOINIT);
@@ -431,8 +431,8 @@ static void exec_log_malloc(EOSState *s, uint32_t pc, CPUARMState *env)
             }
         }
         if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-            eos_callstack_indent(s);
-            eos_print_location(s, pc, lr, "", " ");
+            eos_callstack_indent();
+            eos_print_location(pc, lr, "", " ");
             fprintf(stderr, "free %x size %x\n", free_ptr, free_size);
         }
     }
@@ -441,8 +441,8 @@ static void exec_log_malloc(EOSState *s, uint32_t pc, CPUARMState *env)
     {
         int start = env->regs[0];
         int size  = env->regs[1];
-        eos_callstack_indent(s);
-        eos_print_location(s, pc, lr, "", " ");
+        eos_callstack_indent();
+        eos_print_location(pc, lr, "", " ");
         fprintf(stderr, "init_heap %x %x\n", start, start+size);
 
         if (start == stubs.checked_heaps[0] ||
@@ -484,7 +484,7 @@ static int memcpy_overlaps(uint32_t dst, uint32_t src, uint32_t size)
             (src_s > dst_s && src_s < dst_e));
 }
 
-static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
+static void exec_log_memcpy(uint32_t pc, CPUARMState *env)
 {
     if (pc == stubs.memcpy[0] || pc == stubs.memcpy[1] || pc == stubs.memcpy[2] || pc == stubs.memcpy[3] ||
         pc == ml_memcpy)
@@ -503,8 +503,8 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
         memcpy_num[id] = env->regs[2];
         memcpy_lr[id]  = env->regs[14];
         if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-            eos_callstack_indent(s);
-            eos_print_location(s, pc, memcpy_lr[id], "", " ");
+            eos_callstack_indent();
+            eos_print_location(pc, memcpy_lr[id], "", " ");
             fprintf(stderr,"memcpy(%x, %x, %x)\n",
                 memcpy_dst[id], memcpy_src[id], memcpy_num[id]
             );
@@ -512,7 +512,7 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
 
         if ((int32_t)memcpy_num[id] < 0)
         {
-            print_location_KLRED(s, pc, memcpy_lr[id]);
+            print_location_KLRED(pc, memcpy_lr[id]);
             fprintf(stderr, "negative size argument to memcpy(%x, %x, %x)?"KRESET"\n",
                 memcpy_dst[id], memcpy_src[id], memcpy_num[id]
             );
@@ -520,7 +520,7 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
 
         if (memcpy_overlaps(memcpy_dst[id], memcpy_src[id], memcpy_num[id]))
         {
-            print_location_KLRED(s, pc, memcpy_lr[id]);
+            print_location_KLRED(pc, memcpy_lr[id]);
             fprintf(stderr, "source and destination overlap in memcpy(%x, %x, %x)"KRESET"\n",
                 memcpy_dst[id], memcpy_src[id], memcpy_num[id]
             );
@@ -533,7 +533,7 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
          */
         memcpy_chk[id] = mem_status_checksum(memcpy_src[id], memcpy_num[id]);
         if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-            eos_callstack_indent(s);
+            eos_callstack_indent();
             fprintf(stderr, "Flags checksum: %"PRIx64"\n", memcpy_chk[id]);
         }
     }
@@ -542,8 +542,8 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
         if (pc == memcpy_lr[id])
         {
             if (qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
-                eos_callstack_indent(s);
-                eos_print_location(s, pc, memcpy_lr[id], "", " ");
+                eos_callstack_indent();
+                eos_print_location(pc, memcpy_lr[id], "", " ");
                 fprintf(stderr, "memcpy(%x, %x, %x) finished.\n",
                     memcpy_dst[id], memcpy_src[id], memcpy_num[id]
                 );
@@ -559,7 +559,7 @@ static void exec_log_memcpy(EOSState *s, uint32_t pc, CPUARMState *env)
 }
 
 /* fixme: many addresses hardcoded to 500D */
-void eos_memcheck_log_exec(EOSState *s, uint32_t pc, CPUARMState *env)
+void eos_memcheck_log_exec(uint32_t pc, CPUARMState *env)
 {
     /* for some reason, this may called multiple times on the same PC */
     static uint32_t prev_pc = 0xFFFFFFFF;
@@ -571,18 +571,18 @@ void eos_memcheck_log_exec(EOSState *s, uint32_t pc, CPUARMState *env)
 
     /* enable this to look for uninitialized memory accesses
      * exploitable before jumping to main firmware */
-    if (0 && pc == s->model->firmware_start)    /* aka ROMBASEADDR */
+    if (0 && pc == eos_state->model->firmware_start)    /* aka ROMBASEADDR */
     {
         fprintf(stderr, "Marking all memory as uninitialized...\n");
-        mem_set_status(0, s->model->ram_size, MS_NOINIT);
+        mem_set_status(0, eos_state->model->ram_size, MS_NOINIT);
         mem_set_status(atcm_start, atcm_end, MS_NOINIT);
         mem_set_status(btcm_start, btcm_end, MS_NOINIT);
         uint32_t hack = 0x4157554B;
         cpu_physical_memory_write(0x3cc000, &hack, 4);
     }
 
-    exec_log_malloc(s, pc, env);
-    exec_log_memcpy(s, pc, env);
+    exec_log_malloc(pc, env);
+    exec_log_memcpy(pc, env);
 
     if (pc == 0x18)
     {
@@ -650,7 +650,7 @@ static void diagnose_addr(uint32_t addr)
     }
 }
 
-void eos_memcheck_init(EOSState *s)
+void eos_memcheck_init(void)
 {
     atcm_start  = ATCM_ADDR;
     atcm_end    = ATCM_ADDR + ATCM_SIZE;
@@ -659,7 +659,7 @@ void eos_memcheck_init(EOSState *s)
     assert(atcm_start == 0);
 
     fprintf(stderr, "Marking all memory as uninitialized...\n");
-    mem_set_status(0, s->model->ram_size, MS_NOINIT);
+    mem_set_status(0, eos_state->model->ram_size, MS_NOINIT);
     mem_set_status(atcm_start, atcm_end, MS_NOINIT);
     mem_set_status(btcm_start, btcm_end, MS_NOINIT);
 
@@ -679,7 +679,7 @@ void eos_memcheck_init(EOSState *s)
     }
 
     /* todo: identify stubs in a way that does not require hardcoding? */
-    if (strcmp(s->model->name, "500D") == 0)
+    if (strcmp(eos_state->model->name, "500D") == 0)
     {
         stubs = (struct memcheck_stubs) {
             .malloc         = { 0xFF018F70, 0xFF06ACB4 },
@@ -705,6 +705,6 @@ void eos_memcheck_init(EOSState *s)
     }
     else
     {
-        fprintf(stderr, "FIXME: no memcheck stubs for %s.\n", s->model->name);
+        fprintf(stderr, "FIXME: no memcheck stubs for %s.\n", eos_state->model->name);
     }
 }

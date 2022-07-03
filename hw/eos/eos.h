@@ -57,23 +57,23 @@
 #define FAR_CALL_INSTR   0xe51ff004    // ldr pc, [pc,#-4]
 #define LOOP_INSTR       0xeafffffe    // 1: b 1b
 
-#define CURRENT_CPU   s->cpus[current_cpu ? current_cpu->cpu_index : 0]
-#define OTHER_CPU     s->cpus[current_cpu ? 0 : current_cpu->cpu_index]
+#define CURRENT_CPU   eos_state->cpus[current_cpu ? current_cpu->cpu_index : 0]
+#define OTHER_CPU     eos_state->cpus[current_cpu ? 0 : current_cpu->cpu_index]
 
 /** Memory configuration **/
-#define ROM0_ADDR     s->model->rom0_addr
-#define ROM1_ADDR     s->model->rom1_addr
-#define ROM0_SIZE     s->model->rom0_size
-#define ROM1_SIZE     s->model->rom1_size
+#define ROM0_ADDR     eos_state->model->rom0_addr
+#define ROM1_ADDR     eos_state->model->rom1_addr
+#define ROM0_SIZE     eos_state->model->rom0_size
+#define ROM1_SIZE     eos_state->model->rom1_size
 
-#define BTCM_ADDR     s->model->btcm_addr
-#define ATCM_ADDR     s->model->atcm_addr
-#define BTCM_SIZE     s->model->btcm_size
-#define ATCM_SIZE     s->model->atcm_size
-#define RAM_SIZE      s->model->ram_size
-#define CACHING_BIT   s->model->caching_bit
-#define MMIO_ADDR     s->model->mmio_addr
-#define MMIO_SIZE     s->model->mmio_size
+#define BTCM_ADDR     eos_state->model->btcm_addr
+#define ATCM_ADDR     eos_state->model->atcm_addr
+#define BTCM_SIZE     eos_state->model->btcm_size
+#define ATCM_SIZE     eos_state->model->atcm_size
+#define RAM_SIZE      eos_state->model->ram_size
+#define CACHING_BIT   eos_state->model->caching_bit
+#define MMIO_ADDR     eos_state->model->mmio_addr
+#define MMIO_SIZE     eos_state->model->mmio_size
 
 /* defines for memory/register access */
 #define INT_ENTRIES 0x200
@@ -85,8 +85,8 @@
 #define NOCHK_LOG  0x02 /* do not check this memory access */
 
 /* DryOS timer */
-#define TIMER_INTERRUPT s->model->dryos_timer_interrupt
-#define DRYOS_TIMER_ID  s->model->dryos_timer_id
+#define TIMER_INTERRUPT eos_state->model->dryos_timer_interrupt
+#define DRYOS_TIMER_ID  eos_state->model->dryos_timer_id
 
 typedef struct
 {
@@ -173,13 +173,13 @@ typedef enum
     RTC_READY        = 0xFF
 } rtc_command_state;
 
-#define HPTIMER_INTERRUPT s->model->hptimer_interrupt
+#define HPTIMER_INTERRUPT eos_state->model->hptimer_interrupt
 
 struct mpu_init_spell
 {
   uint16_t in_spell[128];
   uint16_t out_spells[256][128];
-  const char * description;
+  const char *description;
 };
 
 typedef struct
@@ -192,11 +192,11 @@ typedef struct
     int recv_index;
     
     /* used for replaying MPU messages */
-    uint16_t * out_spell;
+    uint16_t *out_spell;
     int out_char;
 
     /* contains pointers to MPU out spells (see mpu_init_spell) */
-    uint16_t * send_queue[0x100];
+    uint16_t *send_queue[0x100];
     int sq_head;                /* for extracting items */
     int sq_tail;                /* for inserting (queueing) items */
 
@@ -224,7 +224,7 @@ typedef struct
 
 typedef struct
 {
-    void * buf;
+    void *buf;
     uint32_t data_size;
 } EDmacData;
 
@@ -252,10 +252,10 @@ typedef struct EOSState
     SysBusDevice parent_obj;
     /*< public >*/
 
-    const char * workdir;
+    const char *workdir;
 
     /* model-specific settings from model_list.c */
-    struct eos_model_desc * model;
+    struct eos_model_desc *model;
 
 //    char *cpu_type;
 
@@ -318,12 +318,13 @@ typedef struct EOSState
     MPUState mpu;
     EDMACState edmac;
     PreproState prepro;
-    struct SerialFlashState * sf;
+    struct SerialFlashState *sf;
     uint32_t card_led;  /* 1 = on, -1 = off, 0 = not used */
     QEMUTimer *interrupt_timer;
     QEMUTimer multicore_timer_01;
     QEMUTimer multicore_timer_02;
 } EOSState;
+extern EOSState *eos_state;
 
 typedef struct
 {
@@ -353,7 +354,7 @@ typedef struct
     const char *name;
     unsigned int start;
     unsigned int end;
-    unsigned int (*handle) ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+    unsigned int (*handle)(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
     unsigned int parm;
 } EOSRegionHandler;
 
@@ -376,68 +377,68 @@ typedef struct
         ret = (lo) | ((hi) << 16);  \
     }
 
-unsigned int eos_handle_rom ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_flashctrl ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_xdmac ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_xdmac7 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_ram ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_i2c ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_cartridge ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_uart_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_timers_ ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_digic_timer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_utimer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_multicore ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_intengine ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_intengine_vx ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_intengine_gic ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_unk ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_gpio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sddma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_cfdma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_asif ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_edmac ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_edmac_chsw ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_prepro ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_head ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_engio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_power_control ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_adc ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_jpcore( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_eeko_comm( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_memdiv( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_rom_id( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_adtg_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+unsigned int eos_handle_rom(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_flashctrl(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_xdmac(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_xdmac7(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_ram(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_i2c(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_cartridge(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_uart(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_uart_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_timers(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_timers_(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_digic_timer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_utimer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_hptimer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_multicore(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_intengine(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_intengine_vx(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_basic(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_unk(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sdio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sddma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_cfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_cfata(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_asif(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_display(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_edmac(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_edmac_chsw(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_prepro(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_head(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_engio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_power_control(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_jpcore(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_eeko_comm(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_memdiv(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_rom_id(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
-unsigned int eos_handle_boot_digic8 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
-void eos_set_mem_w ( EOSState *s, uint32_t addr, uint32_t val );
-void eos_set_mem_h ( EOSState *s, uint32_t addr, uint16_t val );
-void eos_set_mem_b ( EOSState *s, uint32_t addr, uint8_t val );
-uint32_t eos_get_mem_w ( EOSState *s, uint32_t addr );
-uint16_t eos_get_mem_h ( EOSState *s, uint32_t addr );
-uint8_t eos_get_mem_b ( EOSState *s, uint32_t addr );
+void eos_set_mem_w(uint32_t addr, uint32_t val);
+void eos_set_mem_h(uint32_t addr, uint16_t val);
+void eos_set_mem_b(uint32_t addr, uint8_t val);
+uint32_t eos_get_mem_w(uint32_t addr);
+uint16_t eos_get_mem_h(uint32_t addr);
+uint8_t eos_get_mem_b(uint32_t addr);
 
-unsigned int eos_default_handle ( EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-EOSRegionHandler *eos_find_handler( unsigned int address);
-unsigned int eos_handler ( EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_trigger_int(EOSState *s, unsigned int id, unsigned int delay);
+unsigned int eos_default_handle(unsigned int address, unsigned char type, unsigned int value);
+EOSRegionHandler *eos_find_handler(unsigned int address);
+unsigned int eos_handler(unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_trigger_int(unsigned int id, unsigned int delay);
 unsigned int flash_get_blocksize(unsigned int rom, unsigned int size, unsigned int word_offset);
 
-void eos_load_image(EOSState *s, const char* file, int offset, int max_size, uint32_t addr, int swap_endian);
-const char * eos_get_cam_path(EOSState *s, const char * file_rel);
+void eos_load_image(const char* file, int offset, int max_size, uint32_t addr, int swap_endian);
+const char *eos_get_cam_path(const char *file_rel);
 
-void io_log(const char * module_name, EOSState *s, unsigned int address, unsigned char type, unsigned int in_value, unsigned int out_value, const char * msg, intptr_t msg_arg1, intptr_t msg_arg2);
+void io_log(const char *module_name, unsigned int address, unsigned char type, unsigned int in_value, unsigned int out_value, const char *msg, intptr_t msg_arg1, intptr_t msg_arg2);
 
 /* EOS ROM device */
 /* its not done yet */
@@ -455,11 +456,11 @@ ROMState *eos_rom_register(hwaddr base, DeviceState *qdev, const char *name, hwa
 #define MEM_WRITE_ROM(addr, buf, size) \
     address_space_write_rom(&address_space_memory, addr, MEMTXATTRS_UNSPECIFIED, buf, size)
 
-void eos_mem_read(EOSState *s, hwaddr addr, void * buf, int size);
-void eos_mem_write(EOSState *s, hwaddr addr, void * buf, int size);
+void eos_mem_read(hwaddr addr, void *buf, int size);
+void eos_mem_write(hwaddr addr, void *buf, int size);
 
-char * eos_get_current_task_name(EOSState *s);
-uint8_t eos_get_current_task_id(EOSState *s);
-int eos_get_current_task_stack(EOSState *s, uint32_t * start, uint32_t * end);
+char *eos_get_current_task_name(void);
+uint8_t eos_get_current_task_id(void);
+int eos_get_current_task_stack(uint32_t *start, uint32_t *end);
 
 #endif /* HW_EOS_H */
