@@ -35,8 +35,8 @@
 #define DIGIC_TIMER20_MASK (0x000FFFFF & ~(DIGIC_TIMER_STEP-1))
 #define DIGIC_TIMER32_MASK (0xFFFFFFFF & ~(DIGIC_TIMER_STEP-1))
 
-static void eos_init_common(EOSState *s);
-static void *eos_init_cpu(EOSState *s);
+static void eos_init_common(void);
+static void *eos_init_cpu(void);
 
 #define TYPE_EOS "eos"
 
@@ -371,11 +371,13 @@ DEFINE_MACHINE(MODEL_NAME_EOSM5, eos_EOSM5_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSRP, eos_EOSRP_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSM50, eos_EOSM50_machine_init)
 
+EOSState *eos_state;
+
 static void eos_initfn(Object *obj)
 {
-    EOSState *s = OBJECT_CHECK(EOSState, (obj), TYPE_EOS);
+    eos_state = OBJECT_CHECK(EOSState, (obj), TYPE_EOS);
 
-    sysbus_init_child_obj(obj, "uart", &s->uart, sizeof(s->uart),
+    sysbus_init_child_obj(obj, "uart", &eos_state->uart, sizeof(eos_state->uart),
                           TYPE_DIGIC_UART);
 
     // FIXME do we need other devices here?  Most of the work is done
@@ -429,7 +431,7 @@ static void eos_realize(DeviceState *dev, Error **errp)
     *(s->model) = get_model_from_name(mc->name);
     assert(s->model->digic_version != 0); // name not found
 
-    eos_init_common(s);
+    eos_init_common();
 
     if (err != NULL) {
         error_propagate(errp, err);
@@ -607,22 +609,20 @@ EOSRegionHandler eos_handlers[] =
 // io range access
 static uint64_t eos_io_read(void *opaque, hwaddr addr, uint32_t size)
 {
-    EOSState* s = (EOSState*) opaque;
     addr += MMIO_ADDR;
 
     uint32_t type = MODE_READ;
 
-    return eos_handler ( opaque, addr, type, 0 );
+    return eos_handler(addr, type, 0);
 }
 
 static void eos_io_write(void *opaque, hwaddr addr, uint64_t val, uint32_t size)
 {
-    EOSState* s = (EOSState*) opaque;
     addr += MMIO_ADDR;
 
     uint32_t type = MODE_WRITE;
 
-    eos_handler ( opaque, addr, type, val );
+    eos_handler(addr, type, val);
 }
 
 static const MemoryRegionOps mmio_ops = {
@@ -637,16 +637,16 @@ static const MemoryRegionOps mmio_ops = {
 
 // fixme: how to get this called?
 // no luck with memory_region_rom_device_set_romd...
-static uint64_t eos_rom_read(void * opaque, hwaddr addr, uint32_t size)
+static uint64_t eos_rom_read(void *opaque, hwaddr addr, uint32_t size)
 {
     fprintf(stderr, "ROM read: %x %x\n", (int)addr, (int)size);
     return 0;
 }
 
-static void eos_rom_write(void * opaque, hwaddr addr, uint64_t value, uint32_t size)
+static void eos_rom_write(void *opaque, hwaddr addr, uint64_t value, uint32_t size)
 {
-    const char * msg = 0;
-    EOSState * s = (EOSState *)((intptr_t) opaque & ~1);
+    const char *msg = NULL;
+    EOSState *s = (EOSState *)((intptr_t) opaque & ~1);
     uint32_t rom_id = (intptr_t) opaque & 1;
     uint32_t rom_addr = (rom_id) ? ROM1_ADDR : ROM0_ADDR;;
     uint32_t address = rom_addr + addr;
@@ -682,7 +682,7 @@ end:;
     // log all ROM writes
     char name[16];
     snprintf(name, sizeof(name), "ROM%d:%d", rom_id, size);
-    io_log(name, s, address, MODE_WRITE, value, 0, msg, 0, 0);
+    io_log(name, address, MODE_WRITE, value, 0, msg, 0, 0);
 
     // make sure we execute the latest code
     // fixme: shouldn't this be handled internally by QEMU?!
@@ -696,7 +696,7 @@ static const MemoryRegionOps rom_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-void eos_mem_read(EOSState *s, hwaddr addr, void * buf, int size)
+void eos_mem_read(hwaddr addr, void *buf, int size)
 {
     cpu_physical_memory_read(addr, buf, size);
 
@@ -705,46 +705,48 @@ void eos_mem_read(EOSState *s, hwaddr addr, void * buf, int size)
         // fixme: can be optimized
         for (int i = 0; i < size; i++)
         {
-            eos_log_mem(s, addr + i, *(uint8_t*)(buf + i), 1, NOCHK_LOG);
+            eos_log_mem(addr + i, *(uint8_t*)(buf + i), 1, NOCHK_LOG);
         }
     }
 }
 
-void eos_mem_write(EOSState *s, hwaddr addr, void * buf, int size)
+void eos_mem_write(hwaddr addr, void *buf, int size)
 {
     if (qemu_loglevel_mask(EOS_LOG_MEM_W))
     {
         // fixme: can be optimized
         for (int i = 0; i < size; i ++)
         {
-            eos_log_mem(s, addr + i, *(uint8_t*)(buf + i), 1, 1 | NOCHK_LOG);
+            eos_log_mem(addr + i, *(uint8_t*)(buf + i), 1, 1 | NOCHK_LOG);
         }
     }
 
     cpu_physical_memory_write(addr, buf, size);
 }
 
-const char * eos_get_cam_path(EOSState *s, const char * file_rel)
+const char *eos_get_cam_path(const char *file_rel)
 {
     // all files are loaded from $QEMU_EOS_WORKDIR/CAM/
     // or $QEMU_EOS_WORKDIR/CAM/FIRM_VER/ if specified
     static char file[1024];
 
-    if (s->model->firmware_version)
+    if (eos_state->model->firmware_version)
     {
         // load from the firmware version directory, if specified
-        snprintf(file, sizeof(file), "%s/%s/%d/%s", s->workdir, s->model->name, s->model->firmware_version, file_rel);
+        snprintf(file, sizeof(file), "%s/%s/%d/%s", eos_state->workdir,
+                 eos_state->model->name, eos_state->model->firmware_version, file_rel);
     }
     else
     {
         // or from the camera directory, if no firmware version is specified
-        snprintf(file, sizeof(file), "%s/%s/%s", s->workdir, s->model->name, file_rel);
+        snprintf(file, sizeof(file), "%s/%s/%s", eos_state->workdir,
+                 eos_state->model->name, file_rel);
     }
 
     return file;
 }
 
-static int check_rom_mirroring(void * buf, int size, int full_size)
+static int check_rom_mirroring(void *buf, int size, int full_size)
 {
     if (size / 2 && memcmp(buf, buf + size / 2, size / 2) == 0)
     {
@@ -762,9 +764,9 @@ static int check_rom_mirroring(void * buf, int size, int full_size)
     }
 }
 
-void eos_load_image(EOSState *s, const char * file_rel, int offset, int max_size, uint32_t addr, int swap_endian)
+void eos_load_image(const char *file_rel, int offset, int max_size, uint32_t addr, int swap_endian)
 {
-    const char * file = eos_get_cam_path(s, file_rel);
+    const char *file = eos_get_cam_path(file_rel);
 
     int size = get_image_size(file);
     if (size < 0)
@@ -781,7 +783,7 @@ void eos_load_image(EOSState *s, const char * file_rel, int offset, int max_size
 
     fprintf(stderr, "[EOS] loading '%s'", file);
 
-    uint8_t* buf = malloc(size);
+    uint8_t *buf = malloc(size);
     if (!buf)
     {
         fprintf(stderr, "%s: malloc error loading '%s'\n", __func__, file);
@@ -824,39 +826,39 @@ void eos_load_image(EOSState *s, const char * file_rel, int offset, int max_size
     free(buf);
 }
 
-static int cfdma_read_data(EOSState *s, CFState *cf);
-static int cfdma_write_data(EOSState *s, CFState *cf);
-static void cfdma_trigger_interrupt(EOSState *s);
+static int cfdma_read_data(CFState *cf);
+static int cfdma_write_data(CFState *cf);
+static void cfdma_trigger_interrupt(void);
 
 
-static void eos_interrupt_timer_body(EOSState *s)
+static void eos_interrupt_timer_body(void)
 {
     {
         uint32_t pos;
 
         // don't loop thread if cpu stopped in gdb
-        if (s->cpu0 && cpu_is_stopped(CPU(s->cpu0))) {
+        if (eos_state->cpu0 && cpu_is_stopped(CPU(eos_state->cpu0))) {
             return;
         }
 
-        if (s->cpu1 && cpu_is_stopped(CPU(s->cpu1))) {
+        if (eos_state->cpu1 && cpu_is_stopped(CPU(eos_state->cpu1))) {
             return;
         }
 
-        s->digic_timer20 += DIGIC_TIMER_STEP;
-        s->digic_timer20 &= DIGIC_TIMER20_MASK;
-        s->digic_timer32 += DIGIC_TIMER_STEP;
-        s->digic_timer32 &= DIGIC_TIMER32_MASK;
+        eos_state->digic_timer20 += DIGIC_TIMER_STEP;
+        eos_state->digic_timer20 &= DIGIC_TIMER20_MASK;
+        eos_state->digic_timer32 += DIGIC_TIMER_STEP;
+        eos_state->digic_timer32 &= DIGIC_TIMER32_MASK;
 
-        for (pos = 0; pos < COUNT(s->timer_enabled); pos++)
+        for (pos = 0; pos < COUNT(eos_state->timer_enabled); pos++)
         {
-            if (s->timer_enabled[pos])
+            if (eos_state->timer_enabled[pos])
             {
-                s->timer_current_value[pos] += DIGIC_TIMER_STEP;
+                eos_state->timer_current_value[pos] += DIGIC_TIMER_STEP;
 
-                if (s->timer_current_value[pos] > s->timer_reload_value[pos])
+                if (eos_state->timer_current_value[pos] > eos_state->timer_reload_value[pos])
                 {
-                    s->timer_current_value[pos] = 0;
+                    eos_state->timer_current_value[pos] = 0;
                 }
             }
         }
@@ -865,11 +867,11 @@ static void eos_interrupt_timer_body(EOSState *s)
         for(pos = INT_ENTRIES-1; pos > 0; pos--)
         {
             // it is pending, so trigger int and set to 0
-            if(s->irq_schedule[pos] == 1)
+            if(eos_state->irq_schedule[pos] == 1)
             {
                 //g_assert(pos != 80);
                 // wait, its not enabled. keep it pending
-                if(s->irq_enabled[pos] && !s->irq_id)
+                if(eos_state->irq_enabled[pos] && !eos_state->irq_id)
                 {
                     // timer interrupt will re-fire periodically
                     if(pos == TIMER_INTERRUPT)
@@ -880,64 +882,68 @@ static void eos_interrupt_timer_body(EOSState *s)
                             // timer interrupt, quiet
                             fprintf(stderr, "[EOS] trigger int 0x%02X (delayed)\n", pos);    // quiet
                         }
-                        s->irq_schedule[pos] = s->timer_reload_value[DRYOS_TIMER_ID] >> 8;
+                        eos_state->irq_schedule[pos] = eos_state->timer_reload_value[DRYOS_TIMER_ID] >> 8;
                     }
                     else
                     {
                         if (qemu_loglevel_mask(CPU_LOG_INT)) {
                             fprintf(stderr, "[EOS] trigger int 0x%02X (delayed)\n", pos);
                         }
-                        s->irq_schedule[pos] = 0;
+                        eos_state->irq_schedule[pos] = 0;
                     }
 
-                    s->irq_id = pos;
-                    s->irq_enabled[s->irq_id] = 0;
+                    eos_state->irq_id = pos;
+                    eos_state->irq_enabled[eos_state->irq_id] = 0;
 
                     cpu_interrupt(CPU(CURRENT_CPU), CPU_INTERRUPT_HARD);
                 }
             }
 
             // still counting down?
-            if(s->irq_schedule[pos] > 1)
+            if(eos_state->irq_schedule[pos] > 1)
             {
-                s->irq_schedule[pos]--;
+                eos_state->irq_schedule[pos]--;
             }
         }
 
         // check all UTimers
-        int utimer_interrupts[COUNT(s->UTimers)] = {
+        int utimer_interrupts[COUNT(eos_state->UTimers)] = {
             0x0E, 0x1E, 0x2E, 0x3E, 0x4E, 0x5E, 0x6E, 0x7E,
         };
 
-        for (int id = 0; id < COUNT(s->UTimers); id++)
+        for (int id = 0; id < COUNT(eos_state->UTimers); id++)
         {
-            if (s->UTimers[id].active && s->UTimers[id].output_compare == s->digic_timer32)
+            if (eos_state->UTimers[id].active
+                && eos_state->UTimers[id].output_compare
+                == eos_state->digic_timer32)
             {
                 if (qemu_loglevel_mask(EOS_LOG_IO)) {
                     fprintf(stderr, "[TIMER] Firing UTimer #%d\n", id);
                 }
-                s->UTimers[id].triggered = 1;
-                eos_trigger_int(s, utimer_interrupts[id], 0);
+                eos_state->UTimers[id].triggered = 1;
+                eos_trigger_int(utimer_interrupts[id], 0);
             }
         }
 
         // also check all HPTimers
         // note: we can trigger multiple HPTimers on a single interrupt
         int trigger_hptimers[64] = {0};
-        int hptimer_interrupts[COUNT(s->HPTimers)] = {
+        int hptimer_interrupts[COUNT(eos_state->HPTimers)] = {
             0x18, 0x1A, 0x1C, 0x1E, 0, 0,
             HPTIMER_INTERRUPT, HPTIMER_INTERRUPT, HPTIMER_INTERRUPT, HPTIMER_INTERRUPT,
             HPTIMER_INTERRUPT, HPTIMER_INTERRUPT, HPTIMER_INTERRUPT, HPTIMER_INTERRUPT,
         };
         
-        for (pos = 0; pos < COUNT(s->HPTimers); pos++)
+        for (pos = 0; pos < COUNT(eos_state->HPTimers); pos++)
         {
-            if (s->HPTimers[pos].active && s->HPTimers[pos].output_compare == s->digic_timer20)
+            if (eos_state->HPTimers[pos].active
+                && eos_state->HPTimers[pos].output_compare
+                == eos_state->digic_timer20)
             {
                 if (qemu_loglevel_mask(EOS_LOG_IO)) {
                     fprintf(stderr, "[HPTimer] Firing HPTimer #%d\n", pos);
                 }
-                s->HPTimers[pos].triggered = 1;
+                eos_state->HPTimers[pos].triggered = 1;
                 int interrupt = hptimer_interrupts[pos];
                 assert(interrupt > 0);
                 assert(interrupt < COUNT(trigger_hptimers));
@@ -949,24 +955,24 @@ static void eos_interrupt_timer_body(EOSState *s)
         {
             if (trigger_hptimers[i])
             {
-                eos_trigger_int(s, i, 0);
+                eos_trigger_int(i, 0);
             }
         }
 
-        if (s->cf.dma_read_request)
+        if (eos_state->cf.dma_read_request)
         {
-            s->cf.dma_read_request = cfdma_read_data(s, &s->cf);
+            eos_state->cf.dma_read_request = cfdma_read_data(&eos_state->cf);
         }
 
-        if (s->cf.dma_write_request)
+        if (eos_state->cf.dma_write_request)
         {
-            s->cf.dma_write_request = cfdma_write_data(s, &s->cf);
+            eos_state->cf.dma_write_request = cfdma_write_data(&eos_state->cf);
         }
         
-        if (s->cf.pending_interrupt && s->cf.interrupt_enabled == 1)
+        if (eos_state->cf.pending_interrupt && eos_state->cf.interrupt_enabled == 1)
         {
-            cfdma_trigger_interrupt(s);
-            s->cf.pending_interrupt = 0;
+            cfdma_trigger_interrupt();
+            eos_state->cf.pending_interrupt = 0;
         }
     }
 
@@ -974,10 +980,9 @@ static void eos_interrupt_timer_body(EOSState *s)
 
 static void eos_interrupt_timer_cb(void *parm)
 {
-    EOSState *s = (EOSState *)parm;
-    eos_interrupt_timer_body(s);
+    eos_interrupt_timer_body();
     int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    timer_mod_anticipate_ns(s->interrupt_timer, now + DIGIC_TIMER_STEP*1000); // DIGIC_TIMER_STEP us
+    timer_mod_anticipate_ns(eos_state->interrupt_timer, now + DIGIC_TIMER_STEP*1000); // DIGIC_TIMER_STEP us
 }
 
 
@@ -1552,8 +1557,7 @@ static const GraphicHwOps eos_display_ops = {
 static void eos_key_event(void *parm, int keycode)
 {
     // keys sent to guest machine
-    EOSState *s = (EOSState *)parm;
-    mpu_send_keypress(s, keycode);
+    mpu_send_keypress(keycode);
     //s->keyb.buf[(s->keyb.tail++) & 15] = keycode;
 }
 
@@ -1596,11 +1600,9 @@ static void eos_uart_rx(void *opaque, const uint8_t *buf, int size)
 
     assert(!eos_uart_can_rx(opaque));
 
-    EOSState *es = (EOSState *)(opaque - offsetof(EOSState, uart));
-    assert(es->model->uart_rx_interrupt);
-
+    assert(eos_state->model->uart_rx_interrupt);
     // fixme: why it locks up without a delay?
-    eos_trigger_int(es, es->model->uart_rx_interrupt, 10);
+    eos_trigger_int(eos_state->model->uart_rx_interrupt, 10);
 }
 
 static void eos_uart_event(void *opaque, int event)
@@ -1615,7 +1617,7 @@ static void eos_uart_reset(DigicUartState *s)
 
 // EOS CPU SETUP 
 
-static void eos_init_rom(EOSState *s, int rom_id, MemoryRegion * rom, uint32_t rom_addr, uint32_t rom_size, uint64_t rom_limit)
+static void eos_init_rom(int rom_id, MemoryRegion *rom, uint32_t rom_addr, uint32_t rom_size, uint64_t rom_limit)
 {
     char name[32];
     uint32_t start_addr = rom_addr;
@@ -1623,9 +1625,12 @@ static void eos_init_rom(EOSState *s, int rom_id, MemoryRegion * rom, uint32_t r
     // main ROM
     sprintf(name, "eos.rom%d", rom_id);
     // fixme: not a very nice way to pass both EOSState * and rom ID
-    void * rom_ops_arg = (void *)((uintptr_t) s | rom_id);
+    //
+    // SJE FIXME: now that eos_state is global, the following can be simplified,
+    // when the points of use for rom_ops_arg are identified.
+    void *rom_ops_arg = (void *)((uintptr_t)eos_state | rom_id);
     memory_region_init_rom_device(rom, NULL, &rom_ops, rom_ops_arg, name, rom_size, &error_abort);
-    memory_region_add_subregion(s->system_mem, start_addr, rom);
+    memory_region_add_subregion(eos_state->system_mem, start_addr, rom);
 
     // mirrored ROMs (aliases: changing one will update all others)
     for(uint64_t offset = start_addr + rom_size; offset < rom_limit; offset += rom_size)
@@ -1633,50 +1638,50 @@ static void eos_init_rom(EOSState *s, int rom_id, MemoryRegion * rom, uint32_t r
         sprintf(name, "eos.rom%d_mirror", rom_id);
         MemoryRegion *image = g_new(MemoryRegion, 1);
         memory_region_init_alias(image, NULL, name, rom, 0x00000000, rom_size);
-        memory_region_add_subregion(s->system_mem, offset, image);
+        memory_region_add_subregion(eos_state->system_mem, offset, image);
     }
 }
 
-static void *eos_init_cpu(EOSState *s)
+static void *eos_init_cpu(void)
 {
-    s->workdir = getenv("QEMU_EOS_WORKDIR");
-    if (!s->workdir)
-        s->workdir = ".";
+    eos_state->workdir = getenv("QEMU_EOS_WORKDIR");
+    if (!eos_state->workdir)
+        eos_state->workdir = ".";
 
-    const char* cpu_name = 
-        (s->model->digic_version <= 4) ? "arm946-eos-arm-cpu"    :  // apparently the same for DIGIC 2, 3 and 4
-        (s->model->digic_version == 5) ? "arm946-eos5-arm-cpu"   :  // minor differences
-        (s->model->digic_version == 7) ? "cortex-a9-eos-arm-cpu" :  // dual core
-        (s->model->digic_version == 8) ? "cortex-a9-eos-arm-cpu" :  // same as D7?
-        (s->model->digic_version >= 6) ? "cortex-r4-eos-arm-cpu" :  // also used on Eeko (fake version 50)
-                                         "arm946-arm-cpu";          // unused here
+    const char *cpu_name = 
+        (eos_state->model->digic_version <= 4) ? "arm946-eos-arm-cpu"    :  // apparently the same for DIGIC 2, 3 and 4
+        (eos_state->model->digic_version == 5) ? "arm946-eos5-arm-cpu"   :  // minor differences
+        (eos_state->model->digic_version == 7) ? "cortex-a9-eos-arm-cpu" :  // dual core
+        (eos_state->model->digic_version == 8) ? "cortex-a9-eos-arm-cpu" :  // same as D7?
+        (eos_state->model->digic_version >= 6) ? "cortex-r4-eos-arm-cpu" :  // also used on Eeko (fake version 50)
+                                                 "arm946-arm-cpu";          // unused here
     
-    s->cpu0 = ARM_CPU(cpu_create(cpu_name));
-    assert(s->cpu0);
+    eos_state->cpu0 = ARM_CPU(cpu_create(cpu_name));
+    assert(eos_state->cpu0);
 
-    if (s->model->max_cpus > 1)
+    if (eos_state->model->max_cpus > 1)
     {
-        s->cpu1 = ARM_CPU(cpu_create(cpu_name));
-        assert(s->cpu1);
-        CPU(s->cpu1)->halted = 1;
-        assert(s->model->max_cpus < 3); // not yet supported, none exist yet
+        eos_state->cpu1 = ARM_CPU(cpu_create(cpu_name));
+        assert(eos_state->cpu1);
+        CPU(eos_state->cpu1)->halted = 1;
+        assert(eos_state->model->max_cpus < 3); // not yet supported, none exist yet
     }
 
-    s->verbosity = 0xFFFFFFFF;
-    s->tio_rxbyte = 0x100;
+    eos_state->verbosity = 0xFFFFFFFF;
+    eos_state->tio_rxbyte = 0x100;
 
-    s->system_mem = get_system_memory();
+    eos_state->system_mem = get_system_memory();
 
     if (ATCM_SIZE)
     {
-        memory_region_init_ram(&s->tcm_code, NULL, "eos.tcm_code", ATCM_SIZE, &error_abort);
-        memory_region_add_subregion(s->system_mem, ATCM_ADDR, &s->tcm_code);
+        memory_region_init_ram(&eos_state->tcm_code, NULL, "eos.tcm_code", ATCM_SIZE, &error_abort);
+        memory_region_add_subregion(eos_state->system_mem, ATCM_ADDR, &eos_state->tcm_code);
     }
 
     if (BTCM_SIZE)
     {
-        memory_region_init_ram(&s->tcm_data, NULL, "eos.tcm_data", BTCM_SIZE, &error_abort);
-        memory_region_add_subregion(s->system_mem, BTCM_ADDR, &s->tcm_data);
+        memory_region_init_ram(&eos_state->tcm_data, NULL, "eos.tcm_data", BTCM_SIZE, &error_abort);
+        memory_region_add_subregion(eos_state->system_mem, BTCM_ADDR, &eos_state->tcm_data);
     }
 
     // set up RAM, cached and uncached
@@ -1693,16 +1698,16 @@ static void *eos_init_cpu(EOSState *s)
     }
 
     assert(RAM_SIZE);
-    memory_region_init_ram(&s->ram, NULL, "eos.ram", RAM_SIZE - ATCM_SIZE, &error_abort);
-    memory_region_add_subregion(s->system_mem, 0 + ATCM_SIZE, &s->ram);
-    memory_region_init_alias(&s->ram_uncached, NULL, "eos.ram_uncached", &s->ram, 0x00000000, RAM_SIZE - ATCM_SIZE);
-    memory_region_add_subregion(s->system_mem, CACHING_BIT + ATCM_SIZE, &s->ram_uncached);
+    memory_region_init_ram(&eos_state->ram, NULL, "eos.ram", RAM_SIZE - ATCM_SIZE, &error_abort);
+    memory_region_add_subregion(eos_state->system_mem, 0 + ATCM_SIZE, &eos_state->ram);
+    memory_region_init_alias(&eos_state->ram_uncached, NULL, "eos.ram_uncached", &eos_state->ram, 0x00000000, RAM_SIZE - ATCM_SIZE);
+    memory_region_add_subregion(eos_state->system_mem, CACHING_BIT + ATCM_SIZE, &eos_state->ram_uncached);
     
     if (ATCM_SIZE && (BTCM_ADDR != CACHING_BIT))
     {
         // I believe there's a small section of RAM visible only as uncacheable (to be tested)
-        memory_region_init_ram(&s->ram_uncached0, NULL, "eos.ram_uncached0", ATCM_SIZE, &error_abort);
-        memory_region_add_subregion(s->system_mem, CACHING_BIT, &s->ram_uncached0);
+        memory_region_init_ram(&eos_state->ram_uncached0, NULL, "eos.ram_uncached0", ATCM_SIZE, &error_abort);
+        memory_region_add_subregion(eos_state->system_mem, CACHING_BIT, &eos_state->ram_uncached0);
     }
     
     char ram_region_name[32] = "";
@@ -1711,77 +1716,79 @@ static void *eos_init_cpu(EOSState *s)
         i++)
     {
         sprintf(ram_region_name, "eos.ram_extra_%ld", i);
-        if (s->model->ram_extra_addr[i] != 0)
+        if (eos_state->model->ram_extra_addr[i] != 0)
         {
-            memory_region_init_ram(&s->ram_extra[i], NULL, ram_region_name, s->model->ram_extra_size[i], &error_abort);
-            memory_region_add_subregion(s->system_mem, s->model->ram_extra_addr[i], &s->ram_extra[i]);
+            memory_region_init_ram(&eos_state->ram_extra[i], NULL, ram_region_name,
+                                   eos_state->model->ram_extra_size[i], &error_abort);
+            memory_region_add_subregion(eos_state->system_mem, eos_state->model->ram_extra_addr[i],
+                                        &eos_state->ram_extra[i]);
         }
     }
 
     // set up ROM0
     if (ROM0_SIZE)
     {
-        eos_init_rom(s, 0, &s->rom0, ROM0_ADDR, ROM0_SIZE, ROM1_ADDR);
+        eos_init_rom(0, &eos_state->rom0, ROM0_ADDR, ROM0_SIZE, ROM1_ADDR);
     }
 
     if (ROM1_SIZE)
     {
-        eos_init_rom(s, 1, &s->rom1, ROM1_ADDR, ROM1_SIZE, 0x100000000);
+        eos_init_rom(1, &eos_state->rom1, ROM1_ADDR, ROM1_SIZE, 0x100000000);
     }
 
     //memory_region_init_ram(&s->rom1, "eos.rom", 0x10000000, &error_abort);
     //memory_region_add_subregion(s->system_mem, 0xF0000000, &s->rom1);
 
     // set up io space
-    memory_region_init_io(&s->mmio, NULL, &mmio_ops, s, "eos.mmio", MMIO_SIZE);
-    memory_region_add_subregion(s->system_mem, MMIO_ADDR, &s->mmio);
+    memory_region_init_io(&eos_state->mmio, NULL, &mmio_ops, eos_state, "eos.mmio", MMIO_SIZE);
+    memory_region_add_subregion(eos_state->system_mem, MMIO_ADDR, &eos_state->mmio);
 
     // ROMState *rom0 = eos_rom_register(0xF8000000, NULL, "ROM1", ROM1_SIZE,
     //                            NULL,
     //                            0x100, 0x100, 32,
     //                            0, 0, 0, 0, 0);
 
-    vmstate_register_ram_global(&s->ram);
+    vmstate_register_ram_global(&eos_state->ram);
 
     // initialize RTC registers, compatible to Ricoh R2062 etc
-    s->rtc.transfer_format = RTC_INACTIVE;
-    s->rtc.regs[0x00] = 0x00;   /* second (BCD) */
-    s->rtc.regs[0x01] = 0x15;   /* minute (BCD) */
-    s->rtc.regs[0x02] = 0x12;   /* hour (BCD) */
-    s->rtc.regs[0x03] = 0x01;   /* day of week */
-    s->rtc.regs[0x04] = 0x30;   /* day (BCD) */
-    s->rtc.regs[0x05] = 0x09;   /* month (BCD), century bit (2000) */
-    s->rtc.regs[0x06] = 0x17;   /* year (BCD since 2000) */
-    s->rtc.regs[0x07] = s->model->rtc_time_correct;     /* Oscillation Adjustment Register */
-    s->rtc.regs[0x0E] = 0x20;                           /* Control Register 1: 24-hour mode, no alarms */
-    s->rtc.regs[0x0F] = s->model->rtc_control_reg_2;    /* Control Register 2: XST (model-specific), PON... */
+    eos_state->rtc.transfer_format = RTC_INACTIVE;
+    eos_state->rtc.regs[0x00] = 0x00;   /* second (BCD) */
+    eos_state->rtc.regs[0x01] = 0x15;   /* minute (BCD) */
+    eos_state->rtc.regs[0x02] = 0x12;   /* hour (BCD) */
+    eos_state->rtc.regs[0x03] = 0x01;   /* day of week */
+    eos_state->rtc.regs[0x04] = 0x30;   /* day (BCD) */
+    eos_state->rtc.regs[0x05] = 0x09;   /* month (BCD), century bit (2000) */
+    eos_state->rtc.regs[0x06] = 0x17;   /* year (BCD since 2000) */
+    eos_state->rtc.regs[0x07] = eos_state->model->rtc_time_correct;     /* Oscillation Adjustment Register */
+    eos_state->rtc.regs[0x0E] = 0x20;                           /* Control Register 1: 24-hour mode, no alarms */
+    eos_state->rtc.regs[0x0F] = eos_state->model->rtc_control_reg_2;    /* Control Register 2: XST (model-specific), PON... */
 
-    if (strcmp(s->model->name, MODEL_NAME_400D) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_400D) == 0)
     {
         /* fixme: RTC protocol unknown, but returning 0xC everywhere brings the GUI */
-        s->rtc.regs[0x00] = 0xC;
+        eos_state->rtc.regs[0x00] = 0xC;
     }
 
     int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    s->interrupt_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, eos_interrupt_timer_cb, s);
-    timer_mod_anticipate_ns(s->interrupt_timer, now + DIGIC_TIMER_STEP * 1000);
+    eos_state->interrupt_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, eos_interrupt_timer_cb, eos_state);
+    timer_mod_anticipate_ns(eos_state->interrupt_timer, now + DIGIC_TIMER_STEP * 1000);
 
     /* init display */
     precompute_yuv2rgb(1);
-    s->disp.con = graphic_console_init(NULL, 0, &eos_display_ops, s);
-    s->disp.bmp_pitch = 960; /* fixme: get it from registers */
+    eos_state->disp.con = graphic_console_init(NULL, 0, &eos_display_ops, eos_state);
+    eos_state->disp.bmp_pitch = 960; /* fixme: get it from registers */
 
     /* init keys */
-    qemu_add_kbd_event_handler(eos_key_event, s);
+    qemu_add_kbd_event_handler(eos_key_event, eos_state);
 
     /* start logging (see the dbi subdir) */
-    eos_logging_init(s);
+    eos_logging_init();
 
-    return s;
+    return eos_state;
 }
 
 #if 1
-static void patch_200D(EOSState *s)
+static void patch_200D(void)
 {
     uint8_t *buf = NULL;
     buf = calloc(0xce24, 1);
@@ -1795,7 +1802,7 @@ static void patch_200D(EOSState *s)
 }
 #endif
 
-static void patch_EOSM3(EOSState *s)
+static void patch_EOSM3(void)
 {
     fprintf(stderr, "Patching 0xFCC637A8 (enabling TIO)\n");
     uint32_t one = 1;
@@ -1839,14 +1846,14 @@ static void patch_EOSM3(EOSState *s)
     MEM_WRITE_ROM(0xFC10A312, (uint8_t*) &pdword0x0, 4);    
 }
 
-static void patch_EOSM10(EOSState *s)
+static void patch_EOSM10(void)
 {
     fprintf(stderr, "Patching 0xFCE642A8 (enabling TIO)\n");
     uint32_t one = 1;
     MEM_WRITE_ROM(0xFCE642A8, (uint8_t*) &one, 4);
 }
 
-static void patch_EOSM5(EOSState *s)
+static void patch_EOSM5(void)
 {
     /* 0x4060, in the block copied from 0xE001B2E4 to 0x4000 */
     fprintf(stderr, "Patching 0xE001B2E4+0x60 (enabling TIO on DryOs #1)\n");
@@ -1858,9 +1865,9 @@ static void patch_EOSM5(EOSState *s)
     MEM_WRITE_ROM(0xE115CF88+0x98, (uint8_t*) &one, 4);
 }
 
-static void eos_init_common(EOSState *s)
+static void eos_init_common(void)
 {
-    eos_init_cpu(s);
+    eos_init_cpu();
 
     /* hijack machine option "firmware" to pass command-line parameters */
     /* e.g. ./run_canon_fw 5D3,firmware="113;boot=1" */
@@ -1870,27 +1877,27 @@ static void eos_init_common(EOSState *s)
     if (options)
     {
         /* first numeric argument is firmware version (e.g. 113) */
-        s->model->firmware_version = atoi(options);
+        eos_state->model->firmware_version = atoi(options);
     }
 
     /* populate ROM0 */
     if (ROM0_SIZE)
     {
-        eos_load_image(s, "ROM0.BIN", 0, ROM0_SIZE, ROM0_ADDR, 0);
+        eos_load_image("ROM0.BIN", 0, ROM0_SIZE, ROM0_ADDR, 0);
     }
     
     /* populate ROM1 */
     if (ROM1_SIZE)
     {
-        eos_load_image(s, "ROM1.BIN", 0, ROM1_SIZE, ROM1_ADDR, 0);
+        eos_load_image("ROM1.BIN", 0, ROM1_SIZE, ROM1_ADDR, 0);
     }
 
     /* init SD card */
     DriveInfo *di;
     /* FIXME use a qdev drive property instead of drive_get_next() */
     di = drive_get_next(IF_SD);
-    s->sd.card = sd_init(di ? blk_by_legacy_dinfo(di) : NULL, false);
-    if (!s->sd.card) {
+    eos_state->sd.card = sd_init(di ? blk_by_legacy_dinfo(di) : NULL, false);
+    if (!eos_state->sd.card) {
         fprintf(stderr, "SD init failed\n");
         exit(1);
     }
@@ -1903,79 +1910,79 @@ static void eos_init_common(EOSState *s)
         exit(1);
     }
 
-    ide_bus_new(&s->cf.bus, sizeof(s->cf.bus), DEVICE(s), 0, 2);
-    ide_init2(&s->cf.bus, s->interrupt);
-    ide_create_drive(&s->cf.bus, 0, dj);
-    s->cf.bus.ifs[0].drive_kind = IDE_CFATA;
+    ide_bus_new(&eos_state->cf.bus, sizeof(eos_state->cf.bus), DEVICE(eos_state), 0, 2);
+    ide_init2(&eos_state->cf.bus, eos_state->interrupt);
+    ide_create_drive(&eos_state->cf.bus, 0, dj);
+    eos_state->cf.bus.ifs[0].drive_kind = IDE_CFATA;
 
 
     /* nkls: init SF */
-    if (s->model->serial_flash_size)
+    if (eos_state->model->serial_flash_size)
     {
-        const char * sf_filename = eos_get_cam_path(s, "SFDATA.BIN");
-        s->sf = serial_flash_init(sf_filename, s->model->serial_flash_size);
+        const char *sf_filename = eos_get_cam_path("SFDATA.BIN");
+        eos_state->sf = serial_flash_init(sf_filename, eos_state->model->serial_flash_size);
     }
     
     /* init UART */
-    qdev_prop_set_chr(DEVICE(&s->uart), "chardev", serial_hd(0));
-    qemu_chr_fe_set_handlers(&s->uart.chr, eos_uart_can_rx, eos_uart_rx,
-                             eos_uart_event, NULL, &s->uart, NULL, true);
-    eos_uart_reset(&s->uart);
+    qdev_prop_set_chr(DEVICE(&eos_state->uart), "chardev", serial_hd(0));
+    qemu_chr_fe_set_handlers(&eos_state->uart.chr, eos_uart_can_rx, eos_uart_rx,
+                             eos_uart_event, NULL, &eos_state->uart, NULL, true);
+    eos_uart_reset(&eos_state->uart);
 
     /* init MPU */
-    mpu_spells_init(s);
+    mpu_spells_init();
 
     /* init image processing engine */
     engine_init();
 
-    if (strcmp(s->model->name, MODEL_NAME_7D) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_7D) == 0)
     {
         fprintf(stderr, "Disabling IPC (boot flag 0x24)\n");
         uint32_t flag = 0;
-        MEM_WRITE_ROM(s->model->bootflags_addr + 0x24, (uint8_t*) &flag, 4);
+        MEM_WRITE_ROM(eos_state->model->bootflags_addr + 0x24, (uint8_t *)&flag, 4);
     }
     
 #if 1
-    if (strcmp(s->model->name, MODEL_NAME_200D) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_200D) == 0)
     {
         printf(" ==== patching 200D\n");
-        patch_200D(s);
+        patch_200D();
     }
 #endif
 
-    if (strcmp(s->model->name, MODEL_NAME_EOSM3) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) == 0)
     {
-        patch_EOSM3(s);
+        patch_EOSM3();
     }
 
-    if (strcmp(s->model->name, MODEL_NAME_EOSM10) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_EOSM10) == 0)
     {
-        patch_EOSM10(s);
+        patch_EOSM10();
     }
 
-    if (strcmp(s->model->name, MODEL_NAME_EOSM5) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_EOSM5) == 0)
     {
-        patch_EOSM5(s);
+        patch_EOSM5();
     }
 
-    if (s->model->digic_version == 6)
+    if (eos_state->model->digic_version == 6)
     {
         /* fixme: initial PC should probably be set in cpu.c */
         /* note: DIGIC 4 and 5 start execution at FFFF0000 (hivecs) */
-        s->cpu0->env.regs[15] = eos_get_mem_w(s, 0xFC000000);
-        fprintf(stderr, "Start address: 0x%08X\n", s->cpu0->env.regs[15]);
+        eos_state->cpu0->env.regs[15] = eos_get_mem_w(0xFC000000);
+        fprintf(stderr, "Start address: 0x%08X\n", eos_state->cpu0->env.regs[15]);
     }
 
-    if (s->model->digic_version == 7 ||
-        s->model->digic_version == 8)
+    if (eos_state->model->digic_version == 7 ||
+        eos_state->model->digic_version == 8)
     {
         /* fixme: what configures this address as startup? */
-        s->cpu0->env.regs[15] = 0xE0000000;
-        s->cpu1->env.regs[15] = 0xE0000000;
-        fprintf(stderr, "Start address: 0x%08X\n", s->cpu0->env.regs[15]);
+        eos_state->cpu0->env.regs[15] = 0xE0000000;
+        eos_state->cpu1->env.regs[15] = 0xE0000000;
+        fprintf(stderr, "Start address: 0x%08X\n", eos_state->cpu0->env.regs[15]);
     }
 
-    if (strcmp(s->model->name, MODEL_NAME_5D3eeko) == 0)
+    if (strcmp(eos_state->model->name, MODEL_NAME_5D3eeko) == 0)
     {
         /* see EekoBltDmac calls (5D3 1.1.3)
          * EekoBltDmac(0x0, 0xd0288000, 0xff99541c, 0x6b8c,  0xff508e78, 0x0), from ff508f30
@@ -1986,12 +1993,12 @@ static void eos_init_common(EOSState *s)
         
         /* all dumps must be made before starting the Eeko core, but after the above copy calls
          * 5D3 1.1.3: 0xFF508F78 (right before writing 7 to C022320C) */
-        eos_load_image(s, "D0288000.DMP", 0, 0x008000, 0,          0);
-        eos_load_image(s, "D0280000.DMP", 0, 0x004000, 0x40000000, 0);
-        eos_load_image(s, "1E00000.DMP",  0, 0x120000, 0x1E00000,  0); /* overlaps 2 regions */
-        eos_load_image(s, "1F20000.DMP",  0, 0x020000, 0x1F20000,  0); /* non-shareable device */
-        s->cpu0->env.regs[15] = 0;
-        s->cpu0->env.thumb = 1;
+        eos_load_image("D0288000.DMP", 0, 0x008000, 0,          0);
+        eos_load_image("D0280000.DMP", 0, 0x004000, 0x40000000, 0);
+        eos_load_image("1E00000.DMP",  0, 0x120000, 0x1E00000,  0); /* overlaps 2 regions */
+        eos_load_image("1F20000.DMP",  0, 0x020000, 0x1F20000,  0); /* non-shareable device */
+        eos_state->cpu0->env.regs[15] = 0;
+        eos_state->cpu0->env.thumb = 1;
     }
     
     if (options)
@@ -2002,30 +2009,30 @@ static void eos_init_common(EOSState *s)
             /* change the boot flag */
             uint32_t flag = strstr(options, "boot=1") ? 0xFFFFFFFF : 0;
             fprintf(stderr, "Setting BOOTDISK flag to %X\n", flag);
-            MEM_WRITE_ROM(s->model->bootflags_addr + 4, (uint8_t*) &flag, 4);
+            MEM_WRITE_ROM(eos_state->model->bootflags_addr + 4, (uint8_t*) &flag, 4);
         }
     }
 }
 
-void eos_set_mem_w ( EOSState *s, uint32_t addr, uint32_t val )
+void eos_set_mem_w(uint32_t addr, uint32_t val)
 {
     assert(0);
     cpu_physical_memory_write(addr, &val, sizeof(val));
 }
 
-void eos_set_mem_h ( EOSState *s, uint32_t addr, uint16_t val )
+void eos_set_mem_h(uint32_t addr, uint16_t val)
 {
     assert(0);
     cpu_physical_memory_write(addr, &val, sizeof(val));
 }
 
-void eos_set_mem_b ( EOSState *s, uint32_t addr, uint8_t val )
+void eos_set_mem_b(uint32_t addr, uint8_t val)
 {
     assert(0);
     cpu_physical_memory_write(addr, &val, sizeof(val));
 }
 
-uint32_t eos_get_mem_w ( EOSState *s, uint32_t addr )
+uint32_t eos_get_mem_w(uint32_t addr)
 {
     uint32_t buf;
 
@@ -2034,7 +2041,7 @@ uint32_t eos_get_mem_w ( EOSState *s, uint32_t addr )
     return buf;
 }
 
-uint16_t eos_get_mem_h ( EOSState *s, uint32_t addr )
+uint16_t eos_get_mem_h(uint32_t addr)
 {
     uint16_t buf;
 
@@ -2043,7 +2050,7 @@ uint16_t eos_get_mem_h ( EOSState *s, uint32_t addr )
     return buf;
 }
 
-uint8_t eos_get_mem_b ( EOSState *s, uint32_t addr )
+uint8_t eos_get_mem_b(uint32_t addr)
 {
     uint8_t buf;
 
@@ -2052,9 +2059,9 @@ uint8_t eos_get_mem_b ( EOSState *s, uint32_t addr )
     return buf;
 }
 
-char * eos_get_current_task_name(EOSState *s)
+char *eos_get_current_task_name(void)
 {
-    if (!s->model->current_task_addr)
+    if (!eos_state->model->current_task_addr)
     {
         return 0;
     }
@@ -2062,16 +2069,16 @@ char * eos_get_current_task_name(EOSState *s)
     uint32_t current_task_ptr;
     uint32_t current_task[0x50/4];
     static char task_name[100];
-    cpu_physical_memory_read(s->model->current_task_addr, &current_task_ptr, 4);
-    if (current_task_ptr && (current_task_ptr & ~s->model->caching_bit) < 0x1000000)
+    cpu_physical_memory_read(eos_state->model->current_task_addr, &current_task_ptr, 4);
+    if (current_task_ptr && (current_task_ptr & ~eos_state->model->caching_bit) < 0x1000000)
     {
-        assert(s->model->current_task_name_offs);
-        int off = s->model->current_task_name_offs;
+        assert(eos_state->model->current_task_name_offs);
+        int off = eos_state->model->current_task_name_offs;
         cpu_physical_memory_read(current_task_ptr, current_task, sizeof(current_task));
         cpu_physical_memory_read(current_task[off], task_name, sizeof(task_name));
 
         /* task name must be printable */
-        for (char * p = task_name; *p; p++)
+        for (char *p = task_name; *p; p++)
         {
             unsigned char c = *p;
             if (c < 32 || c > 127)
@@ -2086,16 +2093,16 @@ char * eos_get_current_task_name(EOSState *s)
     return 0;
 }
 
-uint8_t eos_get_current_task_id(EOSState *s)
+uint8_t eos_get_current_task_id(void)
 {
-    if (!s->model->current_task_addr)
+    if (!eos_state->model->current_task_addr)
     {
         return 0xFF;
     }
     
     uint32_t current_task_ptr;
     uint32_t current_task;
-    cpu_physical_memory_read(s->model->current_task_addr, &current_task_ptr, 4);
+    cpu_physical_memory_read(eos_state->model->current_task_addr, &current_task_ptr, 4);
     if (current_task_ptr && current_task_ptr < 0x1000000)
     {
         cpu_physical_memory_read(current_task_ptr + 0x40, &current_task, 4);
@@ -2105,16 +2112,16 @@ uint8_t eos_get_current_task_id(EOSState *s)
     return 0xFF;
 }
 
-int eos_get_current_task_stack(EOSState *s, uint32_t * top, uint32_t * bottom)
+int eos_get_current_task_stack(uint32_t *top, uint32_t *bottom)
 {
-    if (!s->model->current_task_addr)
+    if (!eos_state->model->current_task_addr)
     {
         return 0;
     }
     
     uint32_t current_task_ptr;
     uint32_t current_stack[2];
-    cpu_physical_memory_read(s->model->current_task_addr, &current_task_ptr, 4);
+    cpu_physical_memory_read(eos_state->model->current_task_addr, &current_task_ptr, 4);
     if (current_task_ptr && current_task_ptr < 0x1000000)
     {
         cpu_physical_memory_read(current_task_ptr + 0x1c, current_stack, 8);
@@ -2127,7 +2134,7 @@ int eos_get_current_task_stack(EOSState *s, uint32_t * top, uint32_t * bottom)
 }
 
 /* return 1 if you want this address or group to be highlighted */
-static int io_highlight(unsigned int address, unsigned char type, const char * module_name, const char * task_name)
+static int io_highlight(unsigned int address, unsigned char type, const char *module_name, const char *task_name)
 {
     /* example: highlight RTC and UART messages (requires -d io,uart) */
     return
@@ -2143,7 +2150,7 @@ static int io_highlight(unsigned int address, unsigned char type, const char * m
     return 1;
 }
 
-void io_log(const char * module_name, EOSState *s, unsigned int address, unsigned char type, unsigned int in_value, unsigned int out_value, const char * msg, intptr_t msg_arg1, intptr_t msg_arg2)
+void io_log(const char *module_name, unsigned int address, unsigned char type, unsigned int in_value, unsigned int out_value, const char *msg, intptr_t msg_arg1, intptr_t msg_arg2)
 {
     /* log I/O when "-d io" is specified on the command line */
     if (!qemu_loglevel_mask(EOS_LOG_IO) && !(type & FORCE_LOG)) {
@@ -2163,14 +2170,14 @@ void io_log(const char * module_name, EOSState *s, unsigned int address, unsigne
     if (!module_name) module_name = "???";
     if (!msg) msg = "???";
     
-    char * task_name = eos_get_current_task_name(s);
+    char *task_name = eos_get_current_task_name();
 
-    const char * color = io_highlight(address, type, module_name, task_name)
+    const char *color = io_highlight(address, type, module_name, task_name)
         ? (type & MODE_WRITE ? KYLW : KLGRN) : "";
 
     char mod_name[24];
     char mod_name_and_pc[72];
-    int indent = eos_callstack_get_indent(s);
+    int indent = eos_callstack_get_indent();
     char indent_spaces[] = "                ";
     indent_spaces[MIN(indent, sizeof(indent_spaces)-1)] = 0;
     snprintf(mod_name, sizeof(mod_name), "%s[%s]", indent_spaces, module_name);
@@ -2222,14 +2229,14 @@ void io_log(const char * module_name, EOSState *s, unsigned int address, unsigne
 
 /** HANDLES **/
 
-unsigned int eos_default_handle ( EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_default_handle(unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int data = 0;
 
-    if ( type & MODE_WRITE )
-        eos_set_mem_w ( s, address, value );
+    if (type & MODE_WRITE)
+        eos_set_mem_w(address, value);
     else
-        data = eos_get_mem_w ( s, address );
+        data = eos_get_mem_w(address);
 
     /* do not log ram/flash access */
     if(((address & 0xF0000000) == 0) || ((address & 0xF0000000) == 0xF0000000) || ((address & 0xF0000000) == 0x40000000))
@@ -2237,11 +2244,11 @@ unsigned int eos_default_handle ( EOSState *s, unsigned int address, unsigned ch
         return data;
     }
 
-    if ( type & MODE_WRITE )
+    if (type & MODE_WRITE)
     {
-        if(s->verbosity & 1)
+        if(eos_state->verbosity & 1)
         {
-            io_log("MEM", s, address, type, value, 0, "", 0, 0);
+            io_log("MEM", address, type, value, 0, "", 0, 0);
         }
     }
     else
@@ -2254,9 +2261,9 @@ unsigned int eos_default_handle ( EOSState *s, unsigned int address, unsigned ch
         {
             data = ~data;
         }
-        if(s->verbosity & 1)
+        if(eos_state->verbosity & 1)
         {
-            io_log("MEM", s, address, type, 0, data, "", 0, 0);
+            io_log("MEM", address, type, 0, data, "", 0, 0);
         }
     }
     return data;
@@ -2276,32 +2283,32 @@ EOSRegionHandler *eos_find_handler(unsigned int address)
     return NULL;
 }
 
-unsigned int eos_handler(EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handler(unsigned int address, unsigned char type, unsigned int value)
 {
     EOSRegionHandler *handler = eos_find_handler(address);
 
     if(handler)
     {
-        return handler->handle(handler->parm, s, address, type, value);
+        return handler->handle(handler->parm, address, type, value);
     }
     else
     {
-        io_log("*unk*", s, address, type, value, 0, 0, 0, 0);
+        io_log("*unk*", address, type, value, 0, 0, 0, 0);
     }
     return 0;
 }
 
-unsigned int eos_trigger_int(EOSState *s, unsigned int id, unsigned int delay)
+unsigned int eos_trigger_int(unsigned int id, unsigned int delay)
 {
     assert(id);
 
-    if(!delay && s->irq_enabled[id] && !s->irq_id)
+    if(!delay && eos_state->irq_enabled[id] && !eos_state->irq_id)
     {
         if (qemu_loglevel_mask(CPU_LOG_INT)) {
             fprintf(stderr, "[EOS] trigger int 0x%02X\n", id);
         }
-        s->irq_id = id;
-        s->irq_enabled[s->irq_id] = 0;
+        eos_state->irq_id = id;
+        eos_state->irq_enabled[eos_state->irq_id] = 0;
         cpu_interrupt(CPU(CURRENT_CPU), CPU_INTERRUPT_HARD);
     }
     else
@@ -2309,11 +2316,11 @@ unsigned int eos_trigger_int(EOSState *s, unsigned int id, unsigned int delay)
         if (qemu_loglevel_mask(CPU_LOG_INT)) {
             fprintf(stderr, "[EOS] trigger int 0x%02X (delayed!)\n", id);
         }
-        if(!s->irq_enabled[id])
+        if(!eos_state->irq_enabled[id])
         {
             delay = 1;
         }
-        s->irq_schedule[id] = MAX(delay, 1);
+        eos_state->irq_schedule[id] = MAX(delay, 1);
     }
     return 0;
 }
@@ -2328,10 +2335,10 @@ static void cpu1_wakeup_timer(void *opaque)
 }
 #endif
 
-unsigned int eos_handle_multicore(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handle_multicore(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * module = "MULTICORE";
-    const char * msg = 0;
+    const char *module = "MULTICORE";
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     unsigned int ret = 0;
@@ -2348,7 +2355,7 @@ unsigned int eos_handle_multicore(unsigned int parm, EOSState *s, unsigned int a
 
         case 0x100:
             msg = "Wake Up CPU1?";
-            assert(s->cpu1);
+            assert(eos_state->cpu1);
             #if 0
             CPU(s->cpu1)->halted = 0;
             printf(KLRED"Wake Up CPU1\n"KRESET);
@@ -2362,15 +2369,15 @@ unsigned int eos_handle_multicore(unsigned int parm, EOSState *s, unsigned int a
 
     if (qemu_loglevel_mask(CPU_LOG_INT))
     {
-        io_log(module, s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log(module, address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
 
 /* this appears to be an older interface for the same interrupt controller */
-unsigned int eos_handle_intengine_vx(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handle_intengine_vx(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     unsigned int ret = 0;
@@ -2387,9 +2394,9 @@ unsigned int eos_handle_intengine_vx(unsigned int parm, EOSState *s, unsigned in
                     if (value & (1u << i))
                     {
                         msg_arg2 = ((address & 0xF0) >> 1) + i;
-                        if (msg_arg2 < COUNT(s->irq_enabled))
+                        if (msg_arg2 < COUNT(eos_state->irq_enabled))
                         {
-                            s->irq_enabled[msg_arg2] = 0;
+                            eos_state->irq_enabled[msg_arg2] = 0;
                         }
                     }
                 }
@@ -2407,9 +2414,9 @@ unsigned int eos_handle_intengine_vx(unsigned int parm, EOSState *s, unsigned in
                     if (value & (1u << i))
                     {
                         msg_arg2 = ((address & 0xF0) >> 1) + i;
-                        if (msg_arg2 < COUNT(s->irq_enabled))
+                        if (msg_arg2 < COUNT(eos_state->irq_enabled))
                         {
-                            s->irq_enabled[msg_arg2] = 1;
+                            eos_state->irq_enabled[msg_arg2] = 1;
                         }
                     }
                 }
@@ -2419,14 +2426,14 @@ unsigned int eos_handle_intengine_vx(unsigned int parm, EOSState *s, unsigned in
 
     if (qemu_loglevel_mask(CPU_LOG_INT))
     {
-        io_log("INTvx", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log("INTvx", address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
 
-unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handle_intengine(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     unsigned int ret = 0;
@@ -2446,12 +2453,12 @@ unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int a
             else
             {
                 msg = "Requested int reason %x (INT %02Xh)";
-                msg_arg1 = s->irq_id << 2;
-                msg_arg2 = s->irq_id;
-                ret = s->irq_id << ((address & 0xF) ? 2 : 0);
+                msg_arg1 = eos_state->irq_id << 2;
+                msg_arg2 = eos_state->irq_id;
+                ret = eos_state->irq_id << ((address & 0xF) ? 2 : 0);
 
                 /* this register resets on read (subsequent reads should report 0) */
-                s->irq_id = 0;
+                eos_state->irq_id = 0;
                 cpu_reset_interrupt(CPU(CURRENT_CPU), CPU_INTERRUPT_HARD);
 
                 if (msg_arg2 == TIMER_INTERRUPT && 
@@ -2472,7 +2479,7 @@ unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int a
             {
                 msg = "Enabled interrupt %02Xh";
                 msg_arg1 = value;
-                s->irq_enabled[value] = 1;
+                eos_state->irq_enabled[value] = 1;
 
                 /* we shouldn't reset s->irq_id here (we already reset it on read) */
                 /* if we reset it here also, it will trigger interrupt 0 incorrectly (on race conditions) */
@@ -2502,7 +2509,7 @@ unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int a
                 if (value)
                 {
                     msg = "Reset IRQ?";
-                    s->irq_id = 0;
+                    eos_state->irq_id = 0;
                     cpu_reset_interrupt(CPU(CURRENT_CPU), CPU_INTERRUPT_HARD);
                 }
             }
@@ -2515,7 +2522,7 @@ unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int a
 
     if (qemu_loglevel_mask(CPU_LOG_INT))
     {
-        io_log("INT", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log("INT", address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
@@ -2523,10 +2530,10 @@ unsigned int eos_handle_intengine(unsigned int parm, EOSState *s, unsigned int a
 /* Private memory region for Cortex A9, used in EOS M5 */
 /* http://www.csc.lsu.edu/~whaley/teach/FHPO_F11/ARM/CortAProgGuide.pdf#G26.1058874 */
 /* fixme: reuse QEMU implementation from intc/arm_gic.c */
-unsigned int eos_handle_intengine_gic ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * module = "PRIV";
-    const char * msg = 0;
+    const char *module = "PRIV";
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     unsigned int ret = 0;
@@ -2607,8 +2614,8 @@ unsigned int eos_handle_intengine_gic ( unsigned int parm, EOSState *s, unsigned
                     // 0xe0004d30
                     if ((value & 0xffff) == 0xa)
                     {
-                        eos_mem_write(s, 0xc100010c, &value, 1);
-                        cpu_interrupt(CPU(s->cpu1), 0xa);
+                        eos_mem_write(0xc100010c, &value, 1);
+                        cpu_interrupt(CPU(eos_state->cpu1), 0xa);
                     }
                 }
 
@@ -2619,12 +2626,12 @@ unsigned int eos_handle_intengine_gic ( unsigned int parm, EOSState *s, unsigned
 
     if (qemu_loglevel_mask(CPU_LOG_INT))
     {
-        io_log(module, s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log(module, address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
 
-unsigned int eos_handle_timers_ ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_timers_(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int pc = CURRENT_CPU->env.regs[15];
 
@@ -2639,10 +2646,10 @@ unsigned int eos_handle_timers_ ( unsigned int parm, EOSState *s, unsigned int a
     return 0;
 }
 
-unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_timers(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
 
@@ -2654,7 +2661,7 @@ unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int ad
 
     msg_arg1 = timer_id;
     
-    if (timer_id < COUNT(s->timer_enabled))
+    if (timer_id < COUNT(eos_state->timer_enabled))
     {
         switch(address & 0x1F)
         {
@@ -2666,20 +2673,20 @@ unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int ad
                         if (DRYOS_TIMER_ID && timer_id == DRYOS_TIMER_ID)
                         {
                             msg = "Timer #%d: starting triggering";
-                            eos_trigger_int(s, TIMER_INTERRUPT, s->timer_reload_value[timer_id] >> 8);   /* digic timer */
+                            eos_trigger_int(TIMER_INTERRUPT, eos_state->timer_reload_value[timer_id] >> 8);   /* digic timer */
                         }
                         else
                         {
                             msg = "Timer #%d: starting";
                         }
 
-                        s->timer_enabled[timer_id] = 1;
+                        eos_state->timer_enabled[timer_id] = 1;
                     }
                     else
                     {
                         msg = "Timer #%d: stopped";
-                        s->timer_enabled[timer_id] = 0;
-                        s->timer_current_value[timer_id] = 0;
+                        eos_state->timer_enabled[timer_id] = 0;
+                        eos_state->timer_current_value[timer_id] = 0;
                     }
                 }
                 else
@@ -2689,7 +2696,7 @@ unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int ad
                 break;
             
             case 0x08:
-                MMIO_VAR(s->timer_reload_value[timer_id]);
+                MMIO_VAR(eos_state->timer_reload_value[timer_id]);
 
                 if(type & MODE_WRITE)
                 {
@@ -2700,7 +2707,7 @@ unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int ad
             
             case 0x0C:
                 msg = "Timer #%d: current value";
-                ret = s->timer_current_value[timer_id];
+                ret = eos_state->timer_current_value[timer_id];
                 break;
             
             case 0x10:
@@ -2712,14 +2719,14 @@ unsigned int eos_handle_timers ( unsigned int parm, EOSState *s, unsigned int ad
         }
     }
 
-    io_log("TIMER", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("TIMER", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
 /* DIGIC 6 UTimer (they look like regular timers, but behave like HPTimers) */
-unsigned int eos_handle_utimer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_utimer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = "UTimer #%d: ???";
+    const char *msg = "UTimer #%d: ???";
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     
@@ -2731,7 +2738,7 @@ unsigned int eos_handle_utimer ( unsigned int parm, EOSState *s, unsigned int ad
     {
 
         case 0x00:
-            MMIO_VAR(s->UTimers[timer_id].active);
+            MMIO_VAR(eos_state->UTimers[timer_id].active);
             msg = value == 1 ? "UTimer #%d: active" :
                   value == 0 ? "UTimer #%d: inactive" :
                                "UTimer #%d: ?!";
@@ -2743,24 +2750,24 @@ unsigned int eos_handle_utimer ( unsigned int parm, EOSState *s, unsigned int ad
             {
                 /* upper rounding, to test for equality with digic_timer32 */
                 uint32_t rounded = (value + DIGIC_TIMER_STEP) & DIGIC_TIMER32_MASK;
-                s->UTimers[timer_id].output_compare = rounded;
+                eos_state->UTimers[timer_id].output_compare = rounded;
 
                 /* for some reason, the value set to output compare
                  * is sometimes a little behind digic_timer32 */
-                int actual_delay = (int32_t)(rounded - s->digic_timer32);
+                int actual_delay = (int32_t)(rounded - eos_state->digic_timer32);
 
                 if (actual_delay < 0)
                 {
                     /* workaround: when this happens, trigger right away */
-                    s->UTimers[timer_id].output_compare = s->digic_timer32 + DIGIC_TIMER_STEP;
+                    eos_state->UTimers[timer_id].output_compare = eos_state->digic_timer32 + DIGIC_TIMER_STEP;
                 }
 
                 msg = "UTimer #%d: output compare (delay %d microseconds)";
-                msg_arg2 = value - s->digic_timer32_last_read;
+                msg_arg2 = value - eos_state->digic_timer32_last_read;
             }
             else
             {
-                ret = s->UTimers[timer_id].output_compare;
+                ret = eos_state->UTimers[timer_id].output_compare;
                 msg = "UTimer #%d: output compare";
             }
             break;
@@ -2779,18 +2786,18 @@ unsigned int eos_handle_utimer ( unsigned int parm, EOSState *s, unsigned int ad
             break;
 
         case 0x10:
-            MMIO_VAR(s->UTimers[timer_id].triggered);
+            MMIO_VAR(eos_state->UTimers[timer_id].triggered);
             msg = "UTimer #%d: triggered?";
             break;
     }
 
-    io_log("TIMER", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("TIMER", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
-unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_hptimer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
     
@@ -2818,30 +2825,30 @@ unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int a
             {
                 /* upper rounding, to test for equality with digic_timer20 */
                 int rounded = (value + DIGIC_TIMER_STEP) & DIGIC_TIMER20_MASK;
-                s->HPTimers[timer_id].output_compare = rounded;
+                eos_state->HPTimers[timer_id].output_compare = rounded;
                 
                 /* for some reason, the value set to output compare
                  * is sometimes a little behind digic_timer20 */
-                int actual_delay = ((int32_t)(rounded - s->digic_timer20) << 12) >> 12;
+                int actual_delay = ((int32_t)(rounded - eos_state->digic_timer20) << 12) >> 12;
 
                 if (actual_delay < 0)
                 {
                     /* workaround: when this happens, trigger right away */
-                    s->HPTimers[timer_id].output_compare = s->digic_timer20 + DIGIC_TIMER_STEP;
+                    eos_state->HPTimers[timer_id].output_compare = eos_state->digic_timer20 + DIGIC_TIMER_STEP;
                 }
 
                 msg = "HPTimer #%d: output compare (delay %d microseconds)";
-                msg_arg2 = value - s->digic_timer20_last_read;
+                msg_arg2 = value - eos_state->digic_timer20_last_read;
             }
             else
             {
-                ret = s->HPTimers[timer_id].output_compare;
+                ret = eos_state->HPTimers[timer_id].output_compare;
                 msg = "HPTimer #%d: output compare";
             }
             break;
 
         case 0x200:
-            MMIO_VAR(s->HPTimers[timer_id].active);
+            MMIO_VAR(eos_state->HPTimers[timer_id].active);
             msg = value == 1 ? "HPTimer #%d: active" :
                   value == 0 ? "HPTimer #%d: inactive" :
                   value == 3 ? "HPTimer #%d: periodic?" :
@@ -2853,7 +2860,7 @@ unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int a
             if(type & MODE_WRITE)
             {
                 msg = "HPTimer #%d: reset trigger?";
-                s->HPTimers[timer_id].triggered = 0;
+                eos_state->HPTimers[timer_id].triggered = 0;
             }
             break;
         
@@ -2867,7 +2874,7 @@ unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int a
                 ret = 0;
                 int i;
                 for (i = 0; i < 8; i++)
-                    if (s->HPTimers[6+i].triggered)
+                    if (eos_state->HPTimers[6+i].triggered)
                         ret |= 1 << (2*i+4);
                 
                 msg = "Which timer(s) triggered";
@@ -2875,14 +2882,14 @@ unsigned int eos_handle_hptimer ( unsigned int parm, EOSState *s, unsigned int a
             break;
     }
 
-    io_log("HPTimer", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("HPTimer", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
 
 // 100D Set_AVS
 static
-unsigned int avs_handle(EOSState *s, int address, int type, int val)
+unsigned int avs_handle(int address, int type, int val)
 {
     // Actual values from a live 100D, possibly reads from an ADC and 
     // the voltage levels set by some voltage supply. If the wrong 
@@ -2896,7 +2903,7 @@ unsigned int avs_handle(EOSState *s, int address, int type, int val)
     };
     static int regA = 0, regB = 0;
     unsigned int ret = 0;
-    const char * msg = "unknown";
+    const char *msg = "unknown";
 
     if (type & MODE_WRITE) {
         switch (address & 0xFFFF) {
@@ -2923,13 +2930,13 @@ unsigned int avs_handle(EOSState *s, int address, int type, int val)
                 break;
         }
     }
-    io_log("AVS", s, address, type, val, ret, msg, 0, 0);
+    io_log("AVS", address, type, val, ret, msg, 0, 0);
     return ret;
 }
 
-static int eos_handle_card_led( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = "Card LED";
+    const char *msg = "Card LED";
     unsigned int ret = 0;
     static int stored_value = 0;
     
@@ -2937,18 +2944,18 @@ static int eos_handle_card_led( unsigned int parm, EOSState *s, unsigned int add
 
     if (type & MODE_WRITE)
     {
-        if (s->model->digic_version == 6 ||
-            s->model->digic_version == 7 ||
-            s->model->digic_version == 8)
+        if (eos_state->model->digic_version == 6 ||
+            eos_state->model->digic_version == 7 ||
+            eos_state->model->digic_version == 8)
         {
-            s->card_led = 
+            eos_state->card_led = 
                 ((value & 0x0F000F) == 0x0D0002) ?  1 :
                 ((value & 0x0F000F) == 0x0C0003) ? -1 :
                 (value == 0x8A0075)              ? -1 : 0;
         }
         else
         {
-            s->card_led = 
+            eos_state->card_led = 
                 (value == 0x46 || value == 0x138800
                                || value == 0x138000  /* 7D */
                                || value == 0x93D800) ?  1 :
@@ -2960,16 +2967,16 @@ static int eos_handle_card_led( unsigned int parm, EOSState *s, unsigned int add
         }
         
         /* this will trigger if somebody writes an invalid LED ON/OFF code */
-        assert (s->card_led);
+        assert(eos_state->card_led);
     }
     
-    io_log("GPIO", s, address, type, value, ret, msg, 0, 0);
+    io_log("GPIO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-static int eos_handle_rtc_cs( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static int eos_handle_rtc_cs(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = "[RTC] CS";
+    const char *msg = "[RTC] CS";
     unsigned int ret = 0;
 
     if (type & MODE_WRITE)
@@ -2978,55 +2985,55 @@ static int eos_handle_rtc_cs( unsigned int parm, EOSState *s, unsigned int addre
             (value & 0x0100000) == 0x100000)
         {
             msg = "[RTC] CS set";
-            s->rtc.transfer_format = RTC_READY;
+            eos_state->rtc.transfer_format = RTC_READY;
         }
         else
         {
             msg = "[RTC] CS reset";
-            s->rtc.transfer_format = RTC_INACTIVE;
+            eos_state->rtc.transfer_format = RTC_INACTIVE;
         }
     }
 
-    io_log("GPIO", s, address, type, value, ret, msg, 0, 0);
+    io_log("GPIO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-static int eos_handle_serial_flash_cs( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static int eos_handle_serial_flash_cs(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = "Serial flash CS";
+    const char *msg = "Serial flash CS";
     unsigned int ret = 0;
 
     if (type & MODE_WRITE)
     {
-        serial_flash_set_CS(s->sf, (value & s->model->serial_flash_cs_bitmask) ? 1 : 0);
+        serial_flash_set_CS(eos_state->sf, (value & eos_state->model->serial_flash_cs_bitmask) ? 1 : 0);
     }
 
-    io_log("GPIO", s, address, type, value, ret, msg, 0, 0);
+    io_log("GPIO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-static unsigned int eos_handle_imgpowdet( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static unsigned int eos_handle_imgpowdet(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     static uint32_t imgpowcfg_written = 0;
     static uint32_t imgpowdet_written = 0;
     static uint32_t imgpowdet_enabled = 0;
 
-    if (address == s->model->imgpowdet_register)
+    if (address == eos_state->model->imgpowdet_register)
     {
         msg = "ImgPowDet";
         MMIO_VAR(imgpowdet_written);
 
         if (!(type & MODE_WRITE))
         {
-            ret = (imgpowdet_written & ~s->model->imgpowdet_register_bit) |
-                  (imgpowdet_enabled &  s->model->imgpowdet_register_bit) ;
+            ret = (imgpowdet_written & ~eos_state->model->imgpowdet_register_bit) |
+                  (imgpowdet_enabled &  eos_state->model->imgpowdet_register_bit) ;
         }
     }
 
-    if (address == s->model->imgpowcfg_register)
+    if (address == eos_state->model->imgpowcfg_register)
     {
         msg = "InitializePcfgPort";
         MMIO_VAR(imgpowcfg_written);
@@ -3035,57 +3042,57 @@ static unsigned int eos_handle_imgpowdet( unsigned int parm, EOSState *s, unsign
         {
             /* to double-check: if you swap the values here,
              * all the FRSP tests should print "Image Power Failure" */
-            imgpowdet_enabled = (value & s->model->imgpowcfg_register_bit)
-                ? s->model->imgpowdet_register_bit : 0;
+            imgpowdet_enabled = (value & eos_state->model->imgpowcfg_register_bit)
+                ? eos_state->model->imgpowdet_register_bit : 0;
 
-            if (imgpowdet_enabled && s->model->imgpowdet_interrupt)
+            if (imgpowdet_enabled && eos_state->model->imgpowdet_interrupt)
             {
-                eos_trigger_int(s, s->model->imgpowdet_interrupt, 1);
+                eos_trigger_int(eos_state->model->imgpowdet_interrupt, 1);
             }
         }
     }
     
-    io_log("IMGPOW", s, address, type, value, ret, msg, 0, 0);
+    io_log("IMGPOW", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 1;
-    const char * msg = 0;
-    const char * msg_lookup = 0;
+    const char *msg = NULL;
+    const char *msg_lookup = 0;
     static int unk = 0;
 
     /* 0xC022009C/BC/C06C/D06C, depending on camera model */
-    if (address == s->model->mpu_request_register ||
-        address == s->model->mpu_status_register)
+    if (address == eos_state->model->mpu_request_register ||
+        address == eos_state->model->mpu_status_register)
     {
-        return eos_handle_mpu(parm, s, address, type, value);
+        return eos_handle_mpu(parm, address, type, value);
     }
 
     /* 0xC0220134/BC/6C/C188/C184, depending on model */
-    if (address == s->model->card_led_address)
+    if (address == eos_state->model->card_led_address)
     {
-        return eos_handle_card_led(parm, s, address, type, value);
+        return eos_handle_card_led(parm, address, type, value);
     }
 
     /* 0xC02200B0/005C/0128/01D4/01F8/C020/C0C4 */
-    if (address == s->model->rtc_cs_register)
+    if (address == eos_state->model->rtc_cs_register)
     {
-        return eos_handle_rtc_cs(parm, s, address, type, value);
+        return eos_handle_rtc_cs(parm, address, type, value);
     }
 
     /* 0xC022002C, 0xC022C0D4 */
-    if (s->sf && address == s->model->serial_flash_cs_register)
+    if (eos_state->sf && address == eos_state->model->serial_flash_cs_register)
     {
-        return eos_handle_serial_flash_cs(parm, s, address, type, value);
+        return eos_handle_serial_flash_cs(parm, address, type, value);
     }
 
     /* 0xC0220008, 0xC022001C, 0xC0220124; 0xC0220118 */
-    if (address == s->model->imgpowdet_register ||
-        address == s->model->imgpowcfg_register)
+    if (address == eos_state->model->imgpowdet_register ||
+        address == eos_state->model->imgpowcfg_register)
     {
-        return eos_handle_imgpowdet(parm, s, address, type, value);
+        return eos_handle_imgpowdet(parm, address, type, value);
     }
 
     switch (address & 0xFFFF)
@@ -3140,8 +3147,8 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
             }
             else
             {
-                if (strcmp(s->model->name, MODEL_NAME_5D2) == 0 ||
-                    strcmp(s->model->name, MODEL_NAME_50D) == 0)
+                if (strcmp(eos_state->model->name, MODEL_NAME_5D2) == 0 ||
+                    strcmp(eos_state->model->name, MODEL_NAME_50D) == 0)
                 {
                     ret = 0x6000;
                     msg = "VSW_STATUS 5D2/50D";
@@ -3160,7 +3167,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
             break;
 
       case 0xF48C:
-            if(strcmp(s->model->name, MODEL_NAME_1300D) == 0)
+            if(strcmp(eos_state->model->name, MODEL_NAME_1300D) == 0)
             {
                 /* 1300D: return 0 here to bypass "System & Display Check & Adjustment program" */
                 /* 0x4000000 = HDMI disconnected */
@@ -3221,7 +3228,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
             break;
     
         case 0x0034:
-            if (s->model->digic_version < 4)
+            if (eos_state->model->digic_version < 4)
             {
                 msg = "400D init";
                 ret = rand();
@@ -3298,7 +3305,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
 
         case 0x011C:    /* 40D, 450D */
             msg = "VIDEO CONNECT";
-            ret = (strcmp(s->model->name, MODEL_NAME_40D) == 0) ? 0 : 1;
+            ret = (strcmp(eos_state->model->name, MODEL_NAME_40D) == 0) ? 0 : 1;
 #ifdef IGNORE_CONNECT_POLL
             return ret;
 #endif
@@ -3356,7 +3363,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
             break;
 
         case 0x0138:
-            if (s->model->digic_version == 5) {
+            if (eos_state->model->digic_version == 5) {
                 msg = "VIDEO CONNECT";      /* EOSM; likely other D5 models */
                 ret = 1;                    /* negative logic */
             } else {
@@ -3374,7 +3381,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
             {
                 if (value == 7)
                 {
-                    eos_trigger_int(s, 0x111, 0);
+                    eos_trigger_int(0x111, 0);
                 }
             }
             break;
@@ -3383,7 +3390,7 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
         case 0xC288:
         case 0xC28C:
         case 0xF498:
-            return avs_handle(s, address, type, value);
+            return avs_handle(address, type, value);
     }
 
     msg_lookup = get_bufcon_label(bufcon_label_100D, address);
@@ -3391,32 +3398,32 @@ unsigned int eos_handle_gpio(unsigned int parm, EOSState *s, unsigned int addres
     {
         char tmp[128];
         snprintf(tmp, sizeof(tmp), "%s (%s)", msg_lookup, msg);
-        io_log("GPIO", s, address, type, value, ret, tmp, 0, 0);
+        io_log("GPIO", address, type, value, ret, tmp, 0, 0);
     }
     else
     {
         if (msg == NULL)
             msg = msg_lookup;
-        io_log("GPIO", s, address, type, value, ret, msg, 0, 0);
+        io_log("GPIO", address, type, value, ret, msg, 0, 0);
     }
     return ret;
 }
 
-unsigned int eos_handle_ram ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_ram(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    int ret = eos_default_handle ( s, address, type, value );
+    int ret = eos_default_handle(address, type, value);
 
     /* not tested; appears unused */
-    io_log("RAM", s, address, type, value, ret, 0, 0, 0);
+    io_log("RAM", address, type, value, ret, 0, 0, 0);
 
     return ret;
 }
 
-unsigned int eos_handle_power_control ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_power_control(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    if (address == s->model->imgpowcfg_register)
+    if (address == eos_state->model->imgpowcfg_register)
     {
-        return eos_handle_imgpowdet(parm, s, address, type, value);
+        return eos_handle_imgpowdet(parm, address, type, value);
     }
 
     unsigned int ret = 0;
@@ -3425,14 +3432,14 @@ unsigned int eos_handle_power_control ( unsigned int parm, EOSState *s, unsigned
     
     MMIO_VAR(data[index]);
     
-    io_log("Power", s, address, type, value, ret, 0, 0, 0);
+    io_log("Power", address, type, value, ret, 0, 0, 0);
     return ret;
 }
 
 
-unsigned int eos_handle_adc ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     unsigned int ret = 0;
     
@@ -3445,8 +3452,8 @@ unsigned int eos_handle_adc ( unsigned int parm, EOSState *s, unsigned int addre
         msg = "channel #%d";
         msg_arg1 = channel;
         
-        if (strcmp(s->model->name, MODEL_NAME_EOSM3) == 0 ||
-            strcmp(s->model->name, MODEL_NAME_EOSM10) == 0)
+        if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) == 0 ||
+            strcmp(eos_state->model->name, MODEL_NAME_EOSM10) == 0)
         {
             /* values from Ant123's camera (M3) */
             uint32_t adc_values[] = {
@@ -3466,18 +3473,18 @@ unsigned int eos_handle_adc ( unsigned int parm, EOSState *s, unsigned int addre
         }
     }
     
-    io_log("ADC", s, address, type, value, ret, msg, msg_arg1, 0);
+    io_log("ADC", address, type, value, ret, msg, msg_arg1, 0);
     return ret;
 }
 
-unsigned int eos_handle_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
     static unsigned int srcAddr = 0;
     static unsigned int dstAddr = 0;
     static unsigned int count = 0;
-    unsigned int interruptId[] = { 0x00, 0x2f, 0x74, 0x75, 0x76, 0xA0, 0xA1, 0xA8, 0xA9 };
+    unsigned int interruptId[] = {0x00, 0x2f, 0x74, 0x75, 0x76, 0xA0, 0xA1, 0xA8, 0xA9};
 
     switch(address & 0xFF)
     {
@@ -3500,8 +3507,8 @@ unsigned int eos_handle_dma ( unsigned int parm, EOSState *s, unsigned int addre
                     {
                         uint32_t transfer = (remain > blocksize) ? blocksize : remain;
 
-                        eos_mem_read(s, src, buf, transfer);
-                        eos_mem_write(s, dst, buf, transfer);
+                        eos_mem_read(src, buf, transfer);
+                        eos_mem_write(dst, buf, transfer);
 
                         remain -= transfer;
                         src += transfer;
@@ -3513,7 +3520,7 @@ unsigned int eos_handle_dma ( unsigned int parm, EOSState *s, unsigned int addre
 
                     /* 1200D assumes the DMA transfer are not instant */
                     /* (otherwise, assert in Startup task - cannot find property 0x2) */
-                    eos_trigger_int(s, interruptId[parm], count / 10000);
+                    eos_trigger_int(interruptId[parm], count / 10000);
                     
                     if (!qemu_loglevel_mask(EOS_LOG_VERBOSE)) {
                         /* quiet (fixme: -d dma) */
@@ -3541,19 +3548,19 @@ unsigned int eos_handle_dma ( unsigned int parm, EOSState *s, unsigned int addre
 
     char dma_name[5];
     snprintf(dma_name, sizeof(dma_name), "DMA%i", parm);
-    io_log(dma_name, s, address, type, value, ret, msg, 0, 0);
+    io_log(dma_name, address, type, value, ret, msg, 0, 0);
 
     return ret;
 }
 
-unsigned int eos_handle_xdmac ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_xdmac(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
     static unsigned int srcAddr = 0;
     static unsigned int dstAddr = 0;
     static unsigned int count = 0;
-    unsigned int interruptId[] = { 0x13E, 0x14E, 0x15E, 0x16E };
+    unsigned int interruptId[] = {0x13E, 0x14E, 0x15E, 0x16E};
 
     switch ((address & 0xFF) % 0x30)
     {
@@ -3583,8 +3590,8 @@ unsigned int eos_handle_xdmac ( unsigned int parm, EOSState *s, unsigned int add
                     {
                         uint32_t transfer = (remain > blocksize) ? blocksize : remain;
 
-                        eos_mem_read(s, src, buf, transfer);
-                        eos_mem_write(s, dst, buf, transfer);
+                        eos_mem_read(src, buf, transfer);
+                        eos_mem_write(dst, buf, transfer);
 
                         remain -= transfer;
                         src += transfer;
@@ -3594,7 +3601,7 @@ unsigned int eos_handle_xdmac ( unsigned int parm, EOSState *s, unsigned int add
 
                     fprintf(stderr, "[XDMAC%i] OK\n", parm);
 
-                    eos_trigger_int(s, interruptId[parm], count / 10000);
+                    eos_trigger_int(interruptId[parm], count / 10000);
                 }
             }
             break;
@@ -3617,19 +3624,19 @@ unsigned int eos_handle_xdmac ( unsigned int parm, EOSState *s, unsigned int add
 
     char dma_name[16];
     snprintf(dma_name, sizeof(dma_name), "XDMAC%i", parm);
-    io_log(dma_name, s, address, type, value, ret, msg, 0, 0);
+    io_log(dma_name, address, type, value, ret, msg, 0, 0);
 
     return ret;
 }
 
-unsigned int eos_handle_xdmac7 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_xdmac7(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
     static unsigned int srcAddr = 0;
     static unsigned int dstAddr = 0;
     static unsigned int count = 0;
-    unsigned int interruptId[] = { 0x11E, 0x12E, 0x13E };
+    unsigned int interruptId[] = {0x11E, 0x12E, 0x13E};
 
     switch (address & 0x3F)
     {
@@ -3652,8 +3659,8 @@ unsigned int eos_handle_xdmac7 ( unsigned int parm, EOSState *s, unsigned int ad
                     {
                         uint32_t transfer = (remain > blocksize) ? blocksize : remain;
 
-                        eos_mem_read(s, src, buf, transfer);
-                        eos_mem_write(s, dst, buf, transfer);
+                        eos_mem_read(src, buf, transfer);
+                        eos_mem_write(dst, buf, transfer);
 
                         remain -= transfer;
                         src += transfer;
@@ -3663,7 +3670,7 @@ unsigned int eos_handle_xdmac7 ( unsigned int parm, EOSState *s, unsigned int ad
 
                     fprintf(stderr, "[XDMAC%i] OK\n", parm);
 
-                    eos_trigger_int(s, interruptId[parm], count / 10000);
+                    eos_trigger_int(interruptId[parm], count / 10000);
                 }
             }
             break;
@@ -3686,15 +3693,15 @@ unsigned int eos_handle_xdmac7 ( unsigned int parm, EOSState *s, unsigned int ad
 
     char dma_name[16];
     snprintf(dma_name, sizeof(dma_name), "XDMAC%i", parm);
-    io_log(dma_name, s, address, type, value, ret, msg, 0, 0);
+    io_log(dma_name, address, type, value, ret, msg, 0, 0);
 
     return ret;
 }
 
-unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_uart(unsigned int parm, unsigned int address, unsigned char type, unsigned int value )
 {
     unsigned int ret = 1;
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     static int enable_tio_interrupt = 0;
     static int flags = 0;
@@ -3715,12 +3722,12 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
                 msg = "Write char";
                 assert(value == (value & 0xFF));
                 
-                qemu_chr_fe_write_all(&s->uart.chr, (void*) &value, 1);
+                qemu_chr_fe_write_all(&eos_state->uart.chr, (void*) &value, 1);
                 
                 /* fixme: better way to check whether the serial is printing to console? */
-                if (strcmp(s->uart.chr.chr->filename, "stdio") != 0 &&
-                    strcmp(s->uart.chr.chr->filename, "mux") != 0 &&
-                    strcmp(s->uart.chr.chr->filename, "file") != 0)
+                if (strcmp(eos_state->uart.chr.chr->filename, "stdio") != 0 &&
+                    strcmp(eos_state->uart.chr.chr->filename, "mux") != 0 &&
+                    strcmp(eos_state->uart.chr.chr->filename, "file") != 0)
                 {
                     fprintf(stderr, KRED"%c"KRESET, value);
                 }
@@ -3729,7 +3736,7 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
                 if (enable_tio_interrupt)
                 {
                     static int warned = 0;
-                    if (!s->model->uart_tx_interrupt)
+                    if (!eos_state->model->uart_tx_interrupt)
                     {
                         if (!warned)
                         {
@@ -3739,7 +3746,7 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
                         break;
                     }
 
-                    eos_trigger_int(s, s->model->uart_tx_interrupt, 1);
+                    eos_trigger_int(eos_state->model->uart_tx_interrupt, 1);
                 }
             }
             else
@@ -3750,8 +3757,8 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x04:
             msg = "Read char";
-            s->uart.reg_st &= ~(ST_RX_RDY);
-            ret = s->uart.reg_rx;
+            eos_state->uart.reg_st &= ~(ST_RX_RDY);
+            ret = eos_state->uart.reg_rx;
             break;
 
         case 0x08:
@@ -3768,18 +3775,18 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
                 if(value & 1)
                 {
                     msg = "Reset RX indicator";
-                    s->uart.reg_st &= ~(ST_RX_RDY);
-                    s->uart_just_received = 100;
+                    eos_state->uart.reg_st &= ~(ST_RX_RDY);
+                    eos_state->uart_just_received = 100;
                 }
                 else
                 {
-                    s->uart.reg_st = value;
+                    eos_state->uart.reg_st = value;
                 }
             }
             else
             {
                 msg = "Status: 1 = char available, 2 = can write";
-                ret = s->uart.reg_st;
+                ret = eos_state->uart.reg_st;
             }
             break;
 
@@ -3798,7 +3805,7 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
                     msg = "enable interrupt?";
                     enable_tio_interrupt = 1;
                 }
-                else if (strcmp(s->model->name, MODEL_NAME_EOSM3) != 0)
+                else if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) != 0)
                 {
                     enable_tio_interrupt = value & 1;
                 }
@@ -3810,15 +3817,15 @@ unsigned int eos_handle_uart ( unsigned int parm, EOSState *s, unsigned int addr
 end:
     if (qemu_loglevel_mask(EOS_LOG_UART))
     {
-        io_log("UART", s, address, type, value, ret, msg, msg_arg1, 0);
+        io_log("UART", address, type, value, ret, msg, msg_arg1, 0);
     }
     return ret;
 }
 
-unsigned int eos_handle_i2c ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_i2c(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
 
@@ -3939,7 +3946,7 @@ unsigned int eos_handle_i2c ( unsigned int parm, EOSState *s, unsigned int addre
                     last_i2c_status = 0;
                     last_i2c_txpos = 0;
                     last_i2c_rxpos = 0;
-                    msg_arg2 = (intptr_t) data;
+                    msg_arg2 = (intptr_t)data;
                 }
                 /* set receive mode */
                 else if(!(value & 0x200))
@@ -3993,14 +4000,14 @@ unsigned int eos_handle_i2c ( unsigned int parm, EOSState *s, unsigned int addre
             break;
     }
 
-    io_log("I2C", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("I2C", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
-static unsigned int eos_handle_rtc ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static unsigned int eos_handle_rtc(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     int msg_arg1 = 0;
     int msg_arg2 = 0;
 
@@ -4022,7 +4029,7 @@ static unsigned int eos_handle_rtc ( unsigned int parm, EOSState *s, unsigned in
                 );
                 msg = default_msg;
 
-                switch(s->rtc.transfer_format)
+                switch(eos_state->rtc.transfer_format)
                 {
                     /* CS inactive, do nothing */
                     case RTC_INACTIVE:
@@ -4036,15 +4043,15 @@ static unsigned int eos_handle_rtc ( unsigned int parm, EOSState *s, unsigned in
                     {
                         uint8_t cmd = last_sio_txdata & 0x0F;
                         uint8_t reg = (last_sio_txdata>>4) & 0x0F;
-                        if (!strcmp(s->model->name, MODEL_NAME_5D2) ||
-                            !strcmp(s->model->name, MODEL_NAME_50D) ||
-                            !strcmp(s->model->name, MODEL_NAME_40D))
+                        if (!strcmp(eos_state->model->name, MODEL_NAME_5D2) ||
+                            !strcmp(eos_state->model->name, MODEL_NAME_50D) ||
+                            !strcmp(eos_state->model->name, MODEL_NAME_40D))
                         {
                             reg = last_sio_txdata & 0x0F;
                             cmd = (last_sio_txdata>>4) & 0x0F;
                         }
-                        s->rtc.transfer_format = cmd;
-                        s->rtc.current_reg = reg;
+                        eos_state->rtc.transfer_format = cmd;
+                        eos_state->rtc.current_reg = reg;
 
                         switch(cmd)
                         {
@@ -4081,41 +4088,41 @@ static unsigned int eos_handle_rtc ( unsigned int parm, EOSState *s, unsigned in
                     /* burst writing */
                     case RTC_WRITE_BURST:
                     case RTC_WRITE_BURST2:
-                        s->rtc.regs[s->rtc.current_reg] = last_sio_txdata;
+                        eos_state->rtc.regs[eos_state->rtc.current_reg] = last_sio_txdata;
                         msg = "WB %02X <- %02X";
-                        msg_arg1 = s->rtc.current_reg;
+                        msg_arg1 = eos_state->rtc.current_reg;
                         msg_arg2 = last_sio_txdata & 0xFF;
-                        s->rtc.current_reg++;
-                        s->rtc.current_reg %= 0x10;
+                        eos_state->rtc.current_reg++;
+                        eos_state->rtc.current_reg %= 0x10;
                         break;
 
                     /* burst reading */
                     case RTC_READ_BURST:
                     case RTC_READ_BURST2:
-                        last_sio_rxdata = s->rtc.regs[s->rtc.current_reg];
+                        last_sio_rxdata = eos_state->rtc.regs[eos_state->rtc.current_reg];
                         msg = "RB %02X -> %02X";
-                        msg_arg1 = s->rtc.current_reg;
+                        msg_arg1 = eos_state->rtc.current_reg;
                         msg_arg2 = last_sio_rxdata;
-                        s->rtc.current_reg++;
-                        s->rtc.current_reg %= 0x10;
+                        eos_state->rtc.current_reg++;
+                        eos_state->rtc.current_reg %= 0x10;
                         break;
 
                     /* 1 byte writing */
                     case RTC_WRITE_SINGLE:
-                        s->rtc.regs[s->rtc.current_reg] = last_sio_txdata;
+                        eos_state->rtc.regs[eos_state->rtc.current_reg] = last_sio_txdata;
                         msg = "WS %02X <- %02X";
-                        msg_arg1 = s->rtc.current_reg;
+                        msg_arg1 = eos_state->rtc.current_reg;
                         msg_arg2 = last_sio_txdata & 0xFF;
-                        s->rtc.transfer_format = RTC_READY;
+                        eos_state->rtc.transfer_format = RTC_READY;
                         break;
 
                     /* 1 byte reading */
                     case RTC_READ_SINGLE:
-                        last_sio_rxdata = s->rtc.regs[s->rtc.current_reg];
+                        last_sio_rxdata = eos_state->rtc.regs[eos_state->rtc.current_reg];
                         msg = "RS %02X -> %02X";
-                        msg_arg1 = s->rtc.current_reg;
+                        msg_arg1 = eos_state->rtc.current_reg;
                         msg_arg2 = last_sio_rxdata;
-                        s->rtc.transfer_format = RTC_READY;
+                        eos_state->rtc.transfer_format = RTC_READY;
                         break;
 
                     default:
@@ -4154,22 +4161,22 @@ static unsigned int eos_handle_rtc ( unsigned int parm, EOSState *s, unsigned in
             break;
     }
 
-    io_log("RTC", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("RTC", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
-unsigned int eos_handle_sio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    if (s->sf && parm == s->model->serial_flash_sio_ch)
+    if (eos_state->sf && parm == eos_state->model->serial_flash_sio_ch)
     {
         /* serial flash (SFIO) */
-        return eos_handle_sio_serialflash(parm, s, address, type, value);
+        return eos_handle_sio_serialflash(parm, address, type, value);
     }
 
-    if (s->rtc.transfer_format != RTC_INACTIVE)
+    if (eos_state->rtc.transfer_format != RTC_INACTIVE)
     {
         /* RTC CS active? */
-        return eos_handle_rtc(parm, s, address, type, value);
+        return eos_handle_rtc(parm, address, type, value);
     }
 
     /* unknown SIO device? generic handler */
@@ -4192,7 +4199,7 @@ unsigned int eos_handle_sio ( unsigned int parm, EOSState *s, unsigned int addre
         case 0x04:
             if((type & MODE_WRITE) && (value & 1))
             {
-                snprintf(msg, sizeof(msg), "Transmit: 0x%08X, setup 0x%08X 0x%08X 0x%08X PC: 0x%08X", last_sio_txdata, last_sio_setup1, last_sio_setup2, last_sio_setup3, pc );
+                snprintf(msg, sizeof(msg), "Transmit: 0x%08X, setup 0x%08X 0x%08X 0x%08X PC: 0x%08X", last_sio_txdata, last_sio_setup1, last_sio_setup2, last_sio_setup3, pc);
             }
             else
             {
@@ -4223,14 +4230,14 @@ unsigned int eos_handle_sio ( unsigned int parm, EOSState *s, unsigned int addre
             break;
     }
 
-    io_log(mod, s, address, type, value, ret, msg, 0, 0);
+    io_log(mod, address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_digic_timer ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_digic_timer(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = "DIGIC clock";
+    const char *msg = "DIGIC clock";
 
     if(type & MODE_WRITE)
     {
@@ -4238,9 +4245,9 @@ unsigned int eos_handle_digic_timer ( unsigned int parm, EOSState *s, unsigned i
     else
     {
         if (parm) {
-            ret = s->digic_timer32_last_read = s->digic_timer32;
+            ret = eos_state->digic_timer32_last_read = eos_state->digic_timer32;
         } else {
-            ret = s->digic_timer20_last_read = s->digic_timer20;
+            ret = eos_state->digic_timer20_last_read = eos_state->digic_timer20;
         }
 
         if (!(qemu_loglevel_mask(CPU_LOG_INT) &&
@@ -4250,7 +4257,7 @@ unsigned int eos_handle_digic_timer ( unsigned int parm, EOSState *s, unsigned i
         }
     }
 
-    io_log("TIMER", s, address, type, value, ret, msg, 0, 0);
+    io_log("TIMER", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
@@ -4315,9 +4322,9 @@ error:
 
 /* inspired from pl181_fifo_run from hw/sd/pl181.c */
 /* only DMA transfers implemented */
-static void sdio_read_data(EOSState *s)
+static void sdio_read_data(void)
 {
-    SDIOState *sd = &s->sd;
+    SDIOState *sd = &eos_state->sd;
     int i;
 
     if (sd->status & SDIO_STATUS_DATA_AVAILABLE)
@@ -4355,16 +4362,16 @@ static void sdio_read_data(EOSState *s)
         uint32_t value = (value1 << 0) | (value2 << 8) | (value3 << 16) | (value4 << 24);
         
         uint32_t addr = sd->dma_addr + i*4; 
-        eos_mem_write(s, addr, &value, 4);
+        eos_mem_write(addr, &value, 4);
     }
 
     sd->status |= SDIO_STATUS_DATA_AVAILABLE;
     sd->dma_transferred_bytes = sd->dma_count;
 }
 
-static void sdio_write_data(EOSState *s)
+static void sdio_write_data(void)
 {
-    SDIOState *sd = &s->sd;
+    SDIOState *sd = &eos_state->sd;
     int i;
 
     if (sd->status & SDIO_STATUS_DATA_AVAILABLE)
@@ -4386,7 +4393,7 @@ static void sdio_write_data(EOSState *s)
     {
         uint32_t addr = sd->dma_addr + i*4; 
         uint32_t value;
-        eos_mem_read(s, addr, &value, 4);
+        eos_mem_read(addr, &value, 4);
         
         sd_write_data(sd->card, (value >>  0) & 0xFF);
         sd_write_data(sd->card, (value >>  8) & 0xFF);
@@ -4399,9 +4406,9 @@ static void sdio_write_data(EOSState *s)
     sd->dma_transferred_bytes = sd->dma_count;
 }
 
-static void sdio_trigger_interrupt(EOSState *s)
+static void sdio_trigger_interrupt(void)
 {
-    SDIOState *sd = &s->sd;
+    SDIOState *sd = &eos_state->sd;
 
     /* after a successful operation, trigger interrupt if requested */
     if ((sd->cmd_flags == 0x13 || sd->cmd_flags == 0x14)
@@ -4420,13 +4427,13 @@ static void sdio_trigger_interrupt(EOSState *s)
 
     if (sd->status & 3)
     {
-        assert(s->model->sd_driver_interrupt);
-        eos_trigger_int(s, s->model->sd_driver_interrupt, 0);
+        assert(eos_state->model->sd_driver_interrupt);
+        eos_trigger_int(eos_state->model->sd_driver_interrupt, 0);
         
         if (sd->dma_enabled)
         {
-            assert(s->model->sd_dma_interrupt);
-            eos_trigger_int(s, s->model->sd_dma_interrupt, 0);
+            assert(eos_state->model->sd_dma_interrupt);
+            eos_trigger_int(eos_state->model->sd_dma_interrupt, 0);
         }
     }
     else if (sd->status)
@@ -4435,25 +4442,25 @@ static void sdio_trigger_interrupt(EOSState *s)
     }
 }
 
-unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sdio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
 
     if (0)
     {
         /* FIXME: only working in bootloader context */
-        assert(s->clock_enable & 0x00000008);   /* DIGIC 3/4 */
-        assert(s->clock_enable & 0x10000000);   /* DIGIC 4, but not 4+ */
+        assert(eos_state->clock_enable & 0x00000008);   /* DIGIC 3/4 */
+        assert(eos_state->clock_enable & 0x10000000);   /* DIGIC 4, but not 4+ */
     }
 
     switch(address & 0xFFF)
     {
         case 0x08:
             msg = "DMA";
-            MMIO_VAR(s->sd.dma_enabled);
+            MMIO_VAR(eos_state->sd.dma_enabled);
             break;
 
         case 0x0C:
@@ -4463,30 +4470,30 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
                 /* must return 0? something else?
                  * maybe clear some flags after executing a command?
                  */
-                s->sd.cmd_flags = value;
+                eos_state->sd.cmd_flags = value;
                 
                 /* reset status before doing any command */
-                s->sd.status = 0;
+                eos_state->sd.status = 0;
                 
                 /* interpret this command */
-                sdio_send_command(&s->sd);
+                sdio_send_command(&eos_state->sd);
                 
                 if (value == 0x14 || value == 0x4)
                 {
                     /* read transfer */
-                    s->sd.pio_transferred_bytes = 0;
-                    s->sd.dma_transferred_bytes = 0;
+                    eos_state->sd.pio_transferred_bytes = 0;
+                    eos_state->sd.dma_transferred_bytes = 0;
                     
-                    if (s->sd.dma_enabled)
+                    if (eos_state->sd.dma_enabled)
                     {
                         /* DMA read transfer */
-                        sdio_read_data(s);
-                        sdio_trigger_interrupt(s);
+                        sdio_read_data();
+                        sdio_trigger_interrupt();
                     }
                     else
                     {
                         /* PIO read transfer */
-                        s->sd.status |= SDIO_STATUS_DATA_AVAILABLE;
+                        eos_state->sd.status |= SDIO_STATUS_DATA_AVAILABLE;
                     }
                 }
                 else
@@ -4494,12 +4501,12 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
                     if (value == 0x13)
                     {
                         /* write transfer */
-                        s->sd.pio_transferred_bytes = 0;
-                        s->sd.dma_transferred_bytes = 0;
+                        eos_state->sd.pio_transferred_bytes = 0;
+                        eos_state->sd.dma_transferred_bytes = 0;
                     }
 
                     /* non-data or write transfer */
-                    sdio_trigger_interrupt(s);
+                    sdio_trigger_interrupt();
                 }
             }
             else
@@ -4518,30 +4525,30 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
             if(type & MODE_WRITE)
             {
                 /* writes to this register appear to clear status bits */
-                s->sd.status &= value;
+                eos_state->sd.status &= value;
             }
             else
             {
-                ret = s->sd.status;
+                ret = eos_state->sd.status;
             }
             break;
 
         case 0x14:
             msg = "irq enable?";
-            MMIO_VAR(s->sd.irq_flags);
+            MMIO_VAR(eos_state->sd.irq_flags);
 
             /* sometimes, a write command ends with this register
              * other times, it ends with SDDMA register 0x10 (mask 0x1F)
              */
-            if (s->sd.cmd_flags == 0x13 && value)
+            if (eos_state->sd.cmd_flags == 0x13 && value)
             {
-                sdio_write_data(s);
+                sdio_write_data();
             }
 
             /* sometimes this register is configured after the transfer is started */
             /* since in our implementation, transfers are instant, this would miss the interrupt,
              * so we trigger it from here too. */
-            sdio_trigger_interrupt(s);
+            sdio_trigger_interrupt();
             break;
 
         case 0x18:
@@ -4550,12 +4557,12 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x20:
             msg = "cmd_lo";
-            MMIO_VAR(s->sd.cmd_lo);
+            MMIO_VAR(eos_state->sd.cmd_lo);
             break;
 
         case 0x24:
             msg = "cmd_hi";
-            MMIO_VAR(s->sd.cmd_hi);
+            MMIO_VAR(eos_state->sd.cmd_hi);
             break;
 
         case 0x28:
@@ -4568,22 +4575,22 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x34:
             msg = "Response[0]";
-            ret = s->sd.response[0];
+            ret = eos_state->sd.response[0];
             break;
 
         case 0x38:
             msg = "Response[1]";
-            ret = s->sd.response[1];
+            ret = eos_state->sd.response[1];
             break;
 
         case 0x3C:
             msg = "Response[2]";
-            ret = s->sd.response[2];
+            ret = eos_state->sd.response[2];
             break;
 
         case 0x40:
             msg = "Response[3]";
-            ret = s->sd.response[3];
+            ret = eos_state->sd.response[3];
             break;
 
         case 0x58:
@@ -4592,7 +4599,7 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x5c:
             msg = "write block size";
-            MMIO_VAR(s->sd.write_block_size);
+            MMIO_VAR(eos_state->sd.write_block_size);
             break;
 
         case 0x64:
@@ -4601,7 +4608,7 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x68:
             msg = "read block size";
-            MMIO_VAR(s->sd.read_block_size);
+            MMIO_VAR(eos_state->sd.read_block_size);
             break;
 
         case 0x6C:
@@ -4611,23 +4618,24 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
             }
             else
             {
-                if (sd_data_ready(s->sd.card))
+                if (sd_data_ready(eos_state->sd.card))
                 {
-                    uint32_t value1 = sd_read_data(s->sd.card);
-                    uint32_t value2 = sd_read_data(s->sd.card);
-                    uint32_t value3 = sd_read_data(s->sd.card);
-                    uint32_t value4 = sd_read_data(s->sd.card);
+                    uint32_t value1 = sd_read_data(eos_state->sd.card);
+                    uint32_t value2 = sd_read_data(eos_state->sd.card);
+                    uint32_t value3 = sd_read_data(eos_state->sd.card);
+                    uint32_t value4 = sd_read_data(eos_state->sd.card);
                     uint32_t value = (value1 << 0) | (value2 << 8) | (value3 << 16) | (value4 << 24);
                     ret = value;
-                    s->sd.pio_transferred_bytes += 4;
+                    eos_state->sd.pio_transferred_bytes += 4;
                     
                     /* note: CMD18 does not report !sd_data_ready when finished */
-                    if (s->sd.pio_transferred_bytes >= s->sd.transfer_count * s->sd.read_block_size)
+                    if (eos_state->sd.pio_transferred_bytes
+                        >= eos_state->sd.transfer_count * eos_state->sd.read_block_size)
                     {
                         SD_DPRINTF("PIO transfer completed.\n");
-                        s->sd.status |= SDIO_STATUS_DATA_AVAILABLE;
-                        s->sd.status |= SDIO_STATUS_OK;
-                        sdio_trigger_interrupt(s);
+                        eos_state->sd.status |= SDIO_STATUS_DATA_AVAILABLE;
+                        eos_state->sd.status |= SDIO_STATUS_OK;
+                        sdio_trigger_interrupt();
                     }
                 }
                 else
@@ -4643,13 +4651,13 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
 
         case 0x7c:
             msg = "transfer block count";
-            MMIO_VAR(s->sd.transfer_count);
+            MMIO_VAR(eos_state->sd.transfer_count);
             break;
 
         case 0x80:
             msg = "transferred blocks";
             /* Goro is very strong. Goro never fails. */
-            ret = s->sd.transfer_count;
+            ret = eos_state->sd.transfer_count;
             break;
 
         case 0x84:
@@ -4665,32 +4673,32 @@ unsigned int eos_handle_sdio ( unsigned int parm, EOSState *s, unsigned int addr
             break;
     }
 
-    io_log("SDIO", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("SDIO", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
-unsigned int eos_handle_sddma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sddma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     switch(address & 0x1F)
     {
         case 0x00:
             msg = "Transfer memory address";
-            MMIO_VAR(s->sd.dma_addr);
+            MMIO_VAR(eos_state->sd.dma_addr);
             break;
         case 0x04:
             msg = "Transfer byte count";
             if (type & MODE_WRITE)
             {
-                s->sd.dma_count = value;
+                eos_state->sd.dma_count = value;
             }
             else
             {
-                ret = (s->sd.dma_enabled)
-                    ? s->sd.dma_transferred_bytes
-                    : s->sd.pio_transferred_bytes;
+                ret = (eos_state->sd.dma_enabled)
+                    ? eos_state->sd.dma_transferred_bytes
+                    : eos_state->sd.pio_transferred_bytes;
                 
                 /* fixme: M3 fails with the above */
                 ret = 0;
@@ -4700,25 +4708,25 @@ unsigned int eos_handle_sddma ( unsigned int parm, EOSState *s, unsigned int add
             msg = "Command/Status?";
             if (type & MODE_WRITE)
             {
-                s->sd.dma_enabled = value & 1;
+                eos_state->sd.dma_enabled = value & 1;
 
                 /* DMA transfer? */
-                if (s->sd.cmd_flags == 0x13 && s->sd.dma_enabled)
+                if (eos_state->sd.cmd_flags == 0x13 && eos_state->sd.dma_enabled)
                 {
-                    sdio_write_data(s);
-                    sdio_trigger_interrupt(s);
+                    sdio_write_data();
+                    sdio_trigger_interrupt();
                 }
             }
             break;
         case 0x14:
             msg = "Status?";
-            ret = (s->sd.dma_enabled) ? 0x81 : 0;
+            ret = (eos_state->sd.dma_enabled) ? 0x81 : 0;
             break;
         case 0x18:
             break;
     }
 
-    io_log("SDDMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("SDDMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
@@ -4731,7 +4739,7 @@ unsigned int eos_handle_sddma ( unsigned int parm, EOSState *s, unsigned int add
 #define CFA_EPRINTF(fmt, ...) EPRINTF("[CFATA] ", EOS_LOG_SDCF, fmt, ## __VA_ARGS__)
 #define CFA_DPRINTF(fmt, ...) DPRINTF("[CFATA] ", EOS_LOG_SDCF, fmt, ## __VA_ARGS__)
 
-static int cfdma_read_data(EOSState *s, CFState *cf)
+static int cfdma_read_data(CFState *cf)
 {
     CFD_DPRINTF("Reading %d of %d bytes to %x\n", cf->dma_count - cf->dma_read, cf->dma_count, cf->dma_addr + cf->dma_read);
 
@@ -4745,7 +4753,7 @@ static int cfdma_read_data(EOSState *s, CFState *cf)
     {
         uint32_t value = ide_data_readl(&cf->bus, 0);
         uint32_t addr = cf->dma_addr + cf->dma_read; 
-        eos_mem_write(s, addr, &value, 4);
+        eos_mem_write(addr, &value, 4);
         CFD_VPRINTF("%08x: %08x\n", addr, value);
         cf->dma_read += 4;
     }
@@ -4756,14 +4764,14 @@ static int cfdma_read_data(EOSState *s, CFState *cf)
     {
         /* finished? */
         assert(cf->dma_wait == 0 || !use_icount);
-        cfdma_trigger_interrupt(s);
+        cfdma_trigger_interrupt();
         return 0;
     }
 
     return 1;
 }
 
-static int cfdma_write_data(EOSState *s, CFState *cf)
+static int cfdma_write_data(CFState *cf)
 {
     CFD_DPRINTF("Writing %d of %d bytes from %x\n", cf->dma_count - cf->dma_written, cf->dma_count, cf->dma_addr + cf->dma_written);
 
@@ -4775,7 +4783,7 @@ static int cfdma_write_data(EOSState *s, CFState *cf)
     {
         uint32_t value;
         uint32_t addr = cf->dma_addr + cf->dma_written; 
-        eos_mem_read(s, addr, &value, 4);
+        eos_mem_read(addr, &value, 4);
         ide_data_writel(&cf->bus, 0, value);
         cf->dma_written += 4;
     }
@@ -4786,34 +4794,34 @@ static int cfdma_write_data(EOSState *s, CFState *cf)
     {
         /* finished? */
         assert(cf->dma_wait == 0 || !use_icount);
-        cfdma_trigger_interrupt(s);
+        cfdma_trigger_interrupt();
         return 0;
     }
 
     return 1;
 }
 
-static void cfdma_trigger_interrupt(EOSState *s)
+static void cfdma_trigger_interrupt(void)
 {
-    CFD_DPRINTF("trigger interrupt? %x\n", s->cf.interrupt_enabled);
+    CFD_DPRINTF("trigger interrupt? %x\n", eos_state->cf.interrupt_enabled);
 
-    if (s->cf.interrupt_enabled & 0x2000001)
+    if (eos_state->cf.interrupt_enabled & 0x2000001)
     {
-        assert(s->model->cf_driver_interrupt);
-        eos_trigger_int(s, s->model->cf_driver_interrupt, 0);
+        assert(eos_state->model->cf_driver_interrupt);
+        eos_trigger_int(eos_state->model->cf_driver_interrupt, 0);
     }
 
-    if (s->cf.interrupt_enabled & 0x10000)
+    if (eos_state->cf.interrupt_enabled & 0x10000)
     {
-        assert(s->model->cf_dma_interrupt);
-        eos_trigger_int(s, s->model->cf_dma_interrupt, 0);
+        assert(eos_state->model->cf_dma_interrupt);
+        eos_trigger_int(eos_state->model->cf_dma_interrupt, 0);
     }
 }
 
-unsigned int eos_handle_uart_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_uart_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     static uint32_t addr;
     static uint32_t count;
@@ -4839,20 +4847,20 @@ unsigned int eos_handle_uart_dma ( unsigned int parm, EOSState *s, unsigned int 
             {
                 /* read char? */
                 count = 0;
-                cpu_physical_memory_write(addr, &s->uart.reg_rx, 1);
+                cpu_physical_memory_write(addr, &eos_state->uart.reg_rx, 1);
                 status = 0x10;
 
                 /* guess: initialization? */
                 static int first_time = 1;
                 if (first_time)
                 {
-                    if (!s->model->uart_rx_interrupt)
+                    if (!eos_state->model->uart_rx_interrupt)
                     {
                         fprintf(stderr, "FIXME: uart_rx_interrupt unknown\n");
                         break;
                     }
 
-                    eos_trigger_int(s, s->model->uart_rx_interrupt, 0);
+                    eos_trigger_int(eos_state->model->uart_rx_interrupt, 0);
                     first_time = 0;
                 }
             }
@@ -4861,21 +4869,21 @@ unsigned int eos_handle_uart_dma ( unsigned int parm, EOSState *s, unsigned int 
 
         case 0x14:
             msg = "DMA status?";
-            if (s->uart.reg_st & ST_RX_RDY) {
+            if (eos_state->uart.reg_st & ST_RX_RDY) {
                 status |= 0x4;
             }
             MMIO_VAR(status);
             break;
     }
 
-    io_log("UartDMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("UartDMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_adtg_dma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     static uint32_t addr;
     static uint32_t count;
@@ -4899,7 +4907,7 @@ unsigned int eos_handle_adtg_dma ( unsigned int parm, EOSState *s, unsigned int 
             msg = "Transfer command / status?";
             if (value == 0x3000025)
             {
-                eos_trigger_int(s, 0x37, 100);
+                eos_trigger_int(0x37, 100);
             }
             break;
 
@@ -4909,37 +4917,37 @@ unsigned int eos_handle_adtg_dma ( unsigned int parm, EOSState *s, unsigned int 
             break;
     }
 
-    io_log("ADTGDMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("ADTGDMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_cfdma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_cfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     switch(address & 0x1F)
     {
         case 0x00:
             msg = "Transfer memory address";
-            MMIO_VAR(s->cf.dma_addr);
+            MMIO_VAR(eos_state->cf.dma_addr);
             break;
         case 0x04:
             msg = "Transfer byte count";
             if(type & MODE_WRITE)
             {
-                s->cf.dma_count = value;
+                eos_state->cf.dma_count = value;
 
                 /* each iteration of cfdma_read_data / cfdma_write_data usually processes 1 block (512 bytes)
                  * however, a few iterations will just wait, nondeterministically, for unclear reasons
                  * to get deterministic execution with -icount, required for tests, we'll slow down the execution
                  * by forcing some more iterations than actually needed, so total times would be deterministic
                  * note: under heavy I/O load (e.g. parallel tests) we need to slow down a lot more! */
-                s->cf.dma_wait = (use_icount) ? value / 512 * 2 + 10 : 0;
+                eos_state->cf.dma_wait = (use_icount) ? value / 512 * 2 + 10 : 0;
             }
             else
             {
-                ret = s->cf.dma_read;
+                ret = eos_state->cf.dma_read;
             }
             break;
         case 0x10:
@@ -4950,19 +4958,19 @@ unsigned int eos_handle_cfdma ( unsigned int parm, EOSState *s, unsigned int add
                 if (value == 0x3D || value == 0x2D)
                 {
                     msg = "DMA write start";
-                    s->cf.dma_written = 0;
-                    s->cf.dma_write_request = 1;
+                    eos_state->cf.dma_written = 0;
+                    eos_state->cf.dma_write_request = 1;
                 }
                 else if (value == 0x39 || value == 0x29 || value == 0x21)
                 {
                     msg = "DMA read start";
-                    s->cf.dma_read = 0;
+                    eos_state->cf.dma_read = 0;
                     
                     /* for some reason, trying to read large blocks at once
                      * may fail; not sure what's the proper way to fix it
                      * workaround: do this in the interrupt timer callback,
                      * where we may retry as needed */
-                    s->cf.dma_read_request = 1;
+                    eos_state->cf.dma_read_request = 1;
                 }
             }
             break;
@@ -4972,14 +4980,14 @@ unsigned int eos_handle_cfdma ( unsigned int parm, EOSState *s, unsigned int add
             break;
     }
 
-    io_log("CFDMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("CFDMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_cfata(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
 
@@ -4987,19 +4995,19 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
     {
         /* DIGIC 4 and earlier */
         /* FIXME: only working in bootloader context */
-        assert(s->clock_enable & 0x40);
+        assert(eos_state->clock_enable & 0x40);
     }
 
     switch(address & 0xFFFF)
     {
         case 0x8104:
             msg = "CFDMA ready maybe?";
-            ret = (s->cf.dma_read_request || s->cf.dma_write_request) ? 0 : 4;
+            ret = (eos_state->cf.dma_read_request || eos_state->cf.dma_write_request) ? 0 : 4;
             break;
         
         case 0x8040:
             msg = "Interrupt enable?";
-            MMIO_VAR(s->cf.interrupt_enabled);
+            MMIO_VAR(eos_state->cf.interrupt_enabled);
             break;
         
         case 0x8044:
@@ -5010,7 +5018,7 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
             else
             {
                 /* should return what was written to 0x8040?! */
-                ret = s->cf.interrupt_enabled;
+                ret = eos_state->cf.interrupt_enabled;
             }
             break;
 
@@ -5019,9 +5027,9 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
             if(type & MODE_WRITE)
             {
                 if (value & 1) {
-                    s->cf.interrupt_enabled |= 0x10000;
+                    eos_state->cf.interrupt_enabled |= 0x10000;
                 } else {
-                    s->cf.interrupt_enabled &= ~0x10000;
+                    eos_state->cf.interrupt_enabled &= ~0x10000;
                 }
             }
             break;
@@ -5032,7 +5040,7 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
             
             if(type & MODE_WRITE)
             {
-                ide_data_writew(&s->cf.bus, 0, value);
+                ide_data_writew(&eos_state->cf.bus, 0, value);
 
                 if (!qemu_loglevel_mask(EOS_LOG_SDCF)) {
                     return 0;
@@ -5040,7 +5048,7 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
             }
             else
             {
-                ret = ide_data_readw(&s->cf.bus, 0);
+                ret = ide_data_readw(&eos_state->cf.bus, 0);
 
                 if (!qemu_loglevel_mask(EOS_LOG_SDCF)) {
                     return ret;
@@ -5078,16 +5086,16 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
 
             if(type & MODE_WRITE)
             {
-                ide_ioport_write(&s->cf.bus, offset, value);
-                if (offset == 7 && s->cf.ata_interrupt_enabled)
+                ide_ioport_write(&eos_state->cf.bus, offset, value);
+                if (offset == 7 && eos_state->cf.ata_interrupt_enabled)
                 {
                     /* a command for which interrupts were requested? */
-                    s->cf.pending_interrupt = 1;
+                    eos_state->cf.pending_interrupt = 1;
                 }
             }
             else
             {
-                ret = ide_ioport_read(&s->cf.bus, offset);
+                ret = ide_ioport_read(&eos_state->cf.bus, offset);
                 if (offset == 7)
                 {
                     /* reading the status register clears peding interrupt */
@@ -5105,17 +5113,17 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
                 msg = "ATA device control: int %s%s";
                 msg_arg1 = (intptr_t) ((value & 2) ? "disable" : "enable");
                 msg_arg2 = (intptr_t) ((value & 4) ? ", soft reset" : "");
-                ide_cmd_write(&s->cf.bus, 0, value & 2);
-                s->cf.ata_interrupt_enabled = !(value & 2);
+                ide_cmd_write(&eos_state->cf.bus, 0, value & 2);
+                eos_state->cf.ata_interrupt_enabled = !(value & 2);
             }
             else
             {
                 msg = "ATA alternate status";
-                ret = ide_status_read(&s->cf.bus, 0);
+                ret = ide_status_read(&eos_state->cf.bus, 0);
             }
             break;
     }
-    io_log("CFATA", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("CFATA", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 
@@ -5124,9 +5132,9 @@ unsigned int eos_handle_cfata ( unsigned int parm, EOSState *s, unsigned int add
 #undef CFD_DPRINTF
 #undef CFD_EPRINTF
 
-static char* format_clock_enable(int value)
+static char *format_clock_enable(int value)
 {
-    const char* clock_modules[] = {
+    const char *clock_modules[] = {
         "???",  "LCLK", "ASIF?", "SD1",     // 1 2 4 8
         "???",  "???",  "CF",    "???",     // 10 20 40 80
         "PWM",  "???",  "Tmr0",  "Tmr1",    // 100 200 400 800
@@ -5149,10 +5157,10 @@ static char* format_clock_enable(int value)
     return clock_msg;
 }
 
-unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_basic(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     
     /* from C0100000 */
     if (parm == 0)
@@ -5184,7 +5192,7 @@ unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int add
                 break;
             }
         }
-        io_log("BASIC", s, address, type, value, ret, msg, 0, 0);
+        io_log("BASIC", address, type, value, ret, msg, 0, 0);
         return ret;
     }
 
@@ -5195,7 +5203,7 @@ unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int add
         {
             msg = "SUSPEND_BIT";
             ret = 0x100;
-            io_log("BASIC", s, address, type, value, ret, msg, 0, 0);
+            io_log("BASIC", address, type, value, ret, msg, 0, 0);
         }
         return ret;
     }
@@ -5204,8 +5212,8 @@ unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int add
     switch(address & 0xFFF)
     {
         case 0x008: /* CLOCK_ENABLE */
-            MMIO_VAR(s->clock_enable);
-            msg = format_clock_enable(s->clock_enable);
+            MMIO_VAR(eos_state->clock_enable);
+            msg = format_clock_enable(eos_state->clock_enable);
             break;
         
         case 0xA4:
@@ -5229,11 +5237,11 @@ unsigned int eos_handle_basic ( unsigned int parm, EOSState *s, unsigned int add
             break;
     }
 
-    io_log("BASIC", s, address, type, value, ret, msg, 0, 0);
+    io_log("BASIC", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_asif ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_asif(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
 
@@ -5251,11 +5259,11 @@ unsigned int eos_handle_asif ( unsigned int parm, EOSState *s, unsigned int addr
         }
     }
 
-    io_log("ASIF", s, address, type, value, ret, 0, 0, 0);
+    io_log("ASIF", address, type, value, ret, 0, 0, 0);
     return ret;
 }
 
-static void process_palette_entry(uint32_t value, struct palette_entry * palette_entry, int palette_index, const char** msg)
+static void process_palette_entry(uint32_t value, struct palette_entry *palette_entry, int palette_index, const char **msg)
 {
     uint32_t pal = value;
 
@@ -5286,10 +5294,10 @@ static void process_palette_entry(uint32_t value, struct palette_entry * palette
     palette_entry->opacity = opacity;
 }
 
-unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_display(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     if (parm == 1)
     {
@@ -5325,7 +5333,7 @@ unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int a
             } else if (value == 4 || value == 0x14) {
                 /* 60D: EnableBitmapVBufferForPlayBackAndWait */
                 /* 5D3 1.2.3 writes 0x14 to 0xC0F1431C */
-                eos_trigger_int(s, 0x68, 10);
+                eos_trigger_int(0x68, 10);
             } else {
                 assert(0);
             }
@@ -5337,13 +5345,13 @@ unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int a
         case 0x350: /* 5D3 1.2.3 */
         case 0x354:
             msg = "BMP VRAM";
-            MMIO_VAR(s->disp.bmp_vram);
+            MMIO_VAR(eos_state->disp.bmp_vram);
             break;
 
         case 0x0E0:
         case 0x0E4:
             msg = "YUV VRAM";
-            MMIO_VAR(s->disp.img_vram);
+            MMIO_VAR(eos_state->disp.img_vram);
             break;
 
         case 0x080 ... 0x0BC:
@@ -5351,9 +5359,9 @@ unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int a
             if(type & MODE_WRITE)
             {
                 int entry = ((address & 0xFFF) - 0x80) / 4;
-                process_palette_entry(value, &s->disp.palette_4bit[entry], entry, &msg);
-                s->disp.is_4bit = 1;
-                s->disp.bmp_pitch = 360;
+                process_palette_entry(value, &eos_state->disp.palette_4bit[entry], entry, &msg);
+                eos_state->disp.is_4bit = 1;
+                eos_state->disp.bmp_pitch = 360;
             }
             break;
 
@@ -5363,15 +5371,15 @@ unsigned int eos_handle_display ( unsigned int parm, EOSState *s, unsigned int a
             if(type & MODE_WRITE)
             {
                 int entry = (((address & 0xFFF) - 0x400) / 4) % 0x100;
-                process_palette_entry(value, &s->disp.palette_8bit[entry], entry, &msg);
-                s->disp.is_4bit = 0;
-                s->disp.bmp_pitch = 960;
+                process_palette_entry(value, &eos_state->disp.palette_8bit[entry], entry, &msg);
+                eos_state->disp.is_4bit = 0;
+                eos_state->disp.bmp_pitch = 960;
             }
             break;
     }
 
 end:
-    io_log("Display", s, address, type, value, ret, msg, 0, 0);
+    io_log("Display", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
@@ -5410,7 +5418,7 @@ unsigned int flash_get_blocksize(unsigned int rom, unsigned int size, unsigned i
     }
 }
 
-unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address, unsigned char type, unsigned int value)
+unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int pc = CURRENT_CPU->env.regs[15];
     unsigned int ret = 0;
@@ -5422,7 +5430,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
     unsigned int fail = 0;
 
     static int block_erase_counter = 0;
-    static int state[2] = { FLASH_STATE_READ, FLASH_STATE_READ };
+    static int state[2] = {FLASH_STATE_READ, FLASH_STATE_READ};
 
     switch(rom)
     {
@@ -5443,9 +5451,9 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
     /* the address of the flash data in memory space */
     real_address = base + byte_offset;
 
-    if(!s->flash_state_machine)
+    if(!eos_state->flash_state_machine)
     {
-        return eos_default_handle ( s, real_address, type, value );
+        return eos_default_handle(real_address, type, value);
     }
 
     if(type & MODE_WRITE)
@@ -5575,7 +5583,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: UNLOCK BYPASS BLOCK ERASE [0x%08X]\r\n", rom, state[rom], pc, real_address);
                     for(pos = 0; pos < block_size; pos += 2)
                     {
-                        eos_set_mem_w ( s, real_address + pos, 0xFFFF );
+                        eos_set_mem_w(real_address + pos, 0xFFFF);
                     }
                     block_erase_counter = 0;
                     state[rom] = FLASH_STATE_BLOCK_ERASE_BUSY;
@@ -5587,7 +5595,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: UNLOCK BYPASS CHIP ERASE\r\n", rom, state[rom], pc);
                     for(pos = 0; pos < size; pos += 2)
                     {
-                        eos_set_mem_w ( s, base + pos, 0xFFFF );
+                        eos_set_mem_w(base + pos, 0xFFFF);
                     }
                     state[rom] = FLASH_STATE_READ;
                 }
@@ -5604,7 +5612,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: CHIP ERASE\r\n", rom, state[rom], pc);
                     for(pos = 0; pos < size; pos += 2)
                     {
-                        eos_set_mem_w ( s, base + pos, 0xFFFF );
+                        eos_set_mem_w(base + pos, 0xFFFF);
                     }
                     state[rom] = FLASH_STATE_READ;
                 }
@@ -5616,7 +5624,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: BLOCK ERASE [0x%08X]\r\n", rom, state[rom], pc, real_address);
                     for(pos = 0; pos < block_size; pos += 2)
                     {
-                        eos_set_mem_w ( s, real_address + pos, 0xFFFF );
+                        eos_set_mem_w(real_address + pos, 0xFFFF);
                     }
                     block_erase_counter = 0;
                     state[rom] = FLASH_STATE_BLOCK_ERASE_BUSY;
@@ -5630,7 +5638,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
 
             case FLASH_STATE_PROGRAM:
                 fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: PROGRAM [0x%04X] -> [0x%08X]\r\n", rom, state[rom], pc, value, real_address);
-                eos_set_mem_w ( s, real_address, value );
+                eos_set_mem_w(real_address, value);
                 state[rom] = FLASH_STATE_READ;
                 break;
         }
@@ -5645,7 +5653,7 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
         switch(state[rom])
         {
             case FLASH_STATE_READ:
-                ret = eos_default_handle ( s, real_address, type, value );
+                ret = eos_default_handle(real_address, type, value);
                 break;
 
             case FLASH_STATE_BLOCK_ERASE_BUSY:
@@ -5671,9 +5679,9 @@ unsigned int eos_handle_rom(unsigned int rom, EOSState *s, unsigned int address,
 }
 
 
-unsigned int eos_handle_flashctrl ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_flashctrl(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     switch(address & 0x1FF)
@@ -5701,13 +5709,13 @@ unsigned int eos_handle_flashctrl ( unsigned int parm, EOSState *s, unsigned int
             break;
     }
 
-    io_log("FlashIF", s, address, type, value, ret, msg, 0, 0);
+    io_log("FlashIF", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_eeko_comm( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_eeko_comm(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = "INT%Xh: ???";
+    const char *msg = "INT%Xh: ???";
     int msg_arg1 = 0;
     unsigned int ret = 0;
 
@@ -5741,13 +5749,13 @@ unsigned int eos_handle_eeko_comm( unsigned int parm, EOSState *s, unsigned int 
             break;
     }
 
-    io_log("EEKO", s, address, type, value, ret, msg, msg_arg1, 0);
+    io_log("EEKO", address, type, value, ret, msg, msg_arg1, 0);
     return ret;
 }
 
-unsigned int eos_handle_memdiv( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_memdiv(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     switch (address & 0xFFFF)
@@ -5767,13 +5775,13 @@ unsigned int eos_handle_memdiv( unsigned int parm, EOSState *s, unsigned int add
         }
     }
 
-    io_log("MEMDIV", s, address, type, value, ret, msg, 0, 0);
+    io_log("MEMDIV", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_rom_id( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_rom_id(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     switch (address)
@@ -5796,7 +5804,7 @@ unsigned int eos_handle_rom_id( unsigned int parm, EOSState *s, unsigned int add
         case 0xD5100010:
         {
             msg = "ROM ID";
-            const int rom_id[3] = { 0x20, 0xBB, 0x18 };
+            const int rom_id[3] = {0x20, 0xBB, 0x18};
             static int i = 0;
             if (type & MODE_WRITE)
             {
@@ -5813,13 +5821,13 @@ unsigned int eos_handle_rom_id( unsigned int parm, EOSState *s, unsigned int add
         }
     }
 
-    io_log("ROMID", s, address, type, value, ret, msg, 0, 0);
+    io_log("ROMID", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_boot_digic8( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
 
     static uint32_t boot_addr;
@@ -5836,47 +5844,47 @@ unsigned int eos_handle_boot_digic8( unsigned int parm, EOSState *s, unsigned in
             break;
     }
 
-    io_log("BOOT8", s, address, type, value, ret, msg, 0, 0);
+    io_log("BOOT8", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
-unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char * msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
     
     static uint32_t palette_addr = 0;
     
     /* 0xD20B0A24/C34/994/224, depending on model */
-    if (address == s->model->card_led_address)
+    if (address == eos_state->model->card_led_address)
     {
-        return eos_handle_card_led(parm, s, address, type, value);
+        return eos_handle_card_led(parm, address, type, value);
     }
 
     /* 0xD20B0884/084, 0xD20B02A4/22A4 */
-    if (address == s->model->mpu_request_register ||
-        address == s->model->mpu_status_register)
+    if (address == eos_state->model->mpu_request_register ||
+        address == eos_state->model->mpu_status_register)
     {
-        return eos_handle_mpu(parm, s, address, type, value);
+        return eos_handle_mpu(parm, address, type, value);
     }
 
     /* 0xD4013008, 0xD4013048 */
-    if (address == s->model->mpu_control_register)
+    if (address == eos_state->model->mpu_control_register)
     {
-        return eos_handle_mreq(parm, s, address, type, value);
+        return eos_handle_mreq(parm, address, type, value);
     }
 
     /* 0xD20B0D8C, 0xD20B037C */
-    if (s->sf && address == s->model->serial_flash_cs_register)
+    if (eos_state->sf && address == eos_state->model->serial_flash_cs_register)
     {
-        return eos_handle_serial_flash_cs(parm, s, address, type, value);
+        return eos_handle_serial_flash_cs(parm, address, type, value);
     }
 
     /* 0xD20B004C, 0xD20B2294, 0xD20B21DC */
-    if (address == s->model->imgpowdet_register ||
-        address == s->model->imgpowcfg_register)
+    if (address == eos_state->model->imgpowdet_register ||
+        address == eos_state->model->imgpowcfg_register)
     {
-        return eos_handle_imgpowdet(parm, s, address, type, value);
+        return eos_handle_imgpowdet(parm, address, type, value);
     }
 
     switch (address)
@@ -5908,21 +5916,21 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
         case 0xD20138BC:    /* M3 */
         case 0xD2060044:    /* D7 */
             msg = "Display resolution";
-            MMIO_VAR_2x16(s->disp.width, s->disp.height);
+            MMIO_VAR_2x16(eos_state->disp.width, eos_state->disp.height);
             break;
         
         case 0xD2030108:    /* D6 */
         case 0xD2060048:    /* D7 */
-            if (strcmp(s->model->name, MODEL_NAME_EOSM3) == 0)
+            if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) == 0)
             {
-                if ((value != 0x17410) && (value != 0x18010)) s->disp.bmp_vram = value << 8;
-                s->disp.bmp_pitch = (s->disp.width + 16) * 2;
+                if ((value != 0x17410) && (value != 0x18010)) eos_state->disp.bmp_vram = value << 8;
+                eos_state->disp.bmp_pitch = (eos_state->disp.width + 16) * 2;
                 msg = "BMP VRAM EOS M3";
             }
             else
             {
-                s->disp.bmp_vram = value << 8;
-                s->disp.bmp_pitch = s->disp.width;
+                eos_state->disp.bmp_vram = value << 8;
+                eos_state->disp.bmp_pitch = eos_state->disp.width;
                 msg = "BMP VRAM";
             }   
             break;
@@ -5930,13 +5938,13 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
         case 0xD2018228:    /* 5D4 */
         case 0xD0304230:    /* M50 */
             msg = "BMP VRAM";
-            MMIO_VAR(s->disp.bmp_vram);
+            MMIO_VAR(eos_state->disp.bmp_vram);
             break;
         
         case 0xD201822C:    /* 5D4 */
         case 0xD0304234:    /* M50 */
             msg = "BMP pitch";
-            MMIO_VAR(s->disp.bmp_pitch);
+            MMIO_VAR(eos_state->disp.bmp_pitch);
             break;
 
         case 0xD20139A8:    /* D6 */
@@ -5952,13 +5960,13 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
             msg = "Bootloader palette confirm";
             for (int i = 0; i < 16; i++)
             {
-                uint32_t entry = eos_get_mem_w(s, palette_addr + i*4);
+                uint32_t entry = eos_get_mem_w(palette_addr + i*4);
                 /* palette entry is different; adjust it to match DIGIC 4/5 routines */
-                uint8_t* ovuy = (uint8_t*) &entry;
+                uint8_t *ovuy = (uint8_t*)&entry;
                 ovuy[1] -= 128; ovuy[2] -= 128;
                 entry = (entry >> 8) | 0x3000000;
-                const char* msg;
-                process_palette_entry(entry, &s->disp.palette_8bit[i], i, &msg);
+                const char *msg;
+                process_palette_entry(entry, &eos_state->disp.palette_8bit[i], i, &msg);
                 fprintf(stderr, "%08X: %s\n", entry, msg);
             }
             break;
@@ -5975,7 +5983,7 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
             else
             {
                 /* these should match the values saved in ROM at FC080010 */
-                uint32_t mr = s->model->ram_manufacturer_id;
+                uint32_t mr = eos_state->model->ram_manufacturer_id;
                 int mr_index = (last >> 8) - 5;
                 ret = (mr >> (mr_index * 8)) & 0xFF;
             }
@@ -5989,7 +5997,7 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
 
         case 0xD2090008: /* CLOCK_ENABLE */
             msg = "CLOCK_ENABLE";
-            MMIO_VAR(s->clock_enable_6);
+            MMIO_VAR(eos_state->clock_enable_6);
             break;
 
         case 0xD20B053C:
@@ -6047,7 +6055,7 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
             else
             {
                 msg = "I2C status?";
-                if (strcmp(s->model->name, MODEL_NAME_EOSM10) == 0)
+                if (strcmp(eos_state->model->name, MODEL_NAME_EOSM10) == 0)
                 {
                     ret = rand();
                 }
@@ -6084,15 +6092,15 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
 
         case 0xD2101504:
             msg = "Wake up CPU1?";       /* M5: wake up the second CPU? */
-            assert(s->cpu1);
-            CPU(s->cpu1)->halted = 0;
+            assert(eos_state->cpu1);
+            CPU(eos_state->cpu1)->halted = 0;
             printf(KLRED"Wake up CPU1\n"KRESET);
             break;
 
         case 0xD0110404:
             msg = "Wake up CPU1?";       /* M50: wake up the second CPU? */
-            assert(s->cpu1);
-            CPU(s->cpu1)->halted = 0;
+            assert(eos_state->cpu1);
+            CPU(eos_state->cpu1)->halted = 0;
             printf(KLRED"Wake up CPU1\n"KRESET);
             ret = 1;
             break;
@@ -6142,7 +6150,7 @@ unsigned int eos_handle_digic6 ( unsigned int parm, EOSState *s, unsigned int ad
             //~ ret = 0x10000;
     }
     
-    io_log("DIGIC6", s, address, type, value, ret, msg, 0, 0);
+    io_log("DIGIC6", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 

@@ -20,7 +20,7 @@
 
 // (adapted from nkls' debug_message_helper.c)
 
-void DebugMsg_log(EOSState * s)
+void DebugMsg_log(void)
 {
     uint32_t r0 = CURRENT_CPU->env.regs[0]; // id 1
     uint32_t r1 = CURRENT_CPU->env.regs[1]; // id 2
@@ -36,11 +36,11 @@ void DebugMsg_log(EOSState * s)
     int arg_i = 0;
     char c;
     uint32_t address = r2;
-    int spaces = eos_print_location_gdb(s);
+    int spaces = eos_print_location_gdb();
     APPEND("(%02x:%02x) ", r0, r1);
     spaces += len;
 
-    c = eos_get_mem_b(s, address++);
+    c = eos_get_mem_b(address++);
     while (c)
     {
         // Print until '%' or '\0'
@@ -55,7 +55,7 @@ void DebugMsg_log(EOSState * s)
             else if (c != '\r') {
                 APPEND("%c", c);
             }
-            c = eos_get_mem_b(s, address++);
+            c = eos_get_mem_b(address++);
         }
         
         if (c == '%')
@@ -67,7 +67,7 @@ void DebugMsg_log(EOSState * s)
             format_string[0] = '%';
             do
             {
-                c = eos_get_mem_b(s, address++);
+                c = eos_get_mem_b(address++);
                 format_string[n++] = c;
             } while (n < COUNT(format_string) && c != '\0' && !strchr("diuoxXsSpc%", c));
 
@@ -77,7 +77,7 @@ void DebugMsg_log(EOSState * s)
                 continue;
             }
 
-            c = eos_get_mem_b(s, address++);
+            c = eos_get_mem_b(address++);
 
             // Skip if it fills format buffer or is {long long} or {short} type
             // (I've never seen those in EOS code)
@@ -108,14 +108,14 @@ void DebugMsg_log(EOSState * s)
             // note: all ARM types {int, long, void*} are of size 32 bits,
             //       and {char, short} should be expanded to 32 bits.
             //       the {long long} is not included in this code.
-            arg = (arg_i == 0) ? r3 : eos_get_mem_w(s, sp + 4 * (arg_i-1));
+            arg = (arg_i == 0) ? r3 : eos_get_mem_w(sp + 4 * (arg_i-1));
             arg_i++;
 
             //APPEND("[%s|%lX] ", format_string, arg);
             if (format == 's')
             {
                 uint32_t sarg = arg;
-                char t = eos_get_mem_b(s, sarg++);
+                char t = eos_get_mem_b(sarg++);
                 while (t != '\0')
                 {
                     if (t == '\n') {
@@ -123,7 +123,7 @@ void DebugMsg_log(EOSState * s)
                     }
                     else if (t != '\r')
                         APPEND("%c", t);
-                    t = eos_get_mem_b(s, sarg++);
+                    t = eos_get_mem_b(sarg++);
                 }
             }
             else if (!is_long)

@@ -13,7 +13,7 @@
 
 typedef struct SerialFlashState {
     // Data
-    uint8_t * data;
+    uint8_t *data;
     size_t size;
     uint8_t RDID_seq[3];
     
@@ -36,16 +36,16 @@ typedef struct SerialFlashState {
 
 // Functions
 // default: serial_flash_init("SFDATA.bin",0x1000000);
-SerialFlashState * serial_flash_init(const char * filename, size_t size);
-void serial_flash_free(SerialFlashState * sf);
-void serial_flash_set_CS(SerialFlashState * sf, int value);
-uint8_t serial_flash_write_poll(SerialFlashState * sf);
-uint8_t serial_flash_spi_read(SerialFlashState * sf);
-void serial_flash_spi_write(SerialFlashState * sf, uint8_t value);
+SerialFlashState *serial_flash_init(const char *filename, size_t size);
+void serial_flash_free(SerialFlashState *sf);
+void serial_flash_set_CS(SerialFlashState *sf, int value);
+uint8_t serial_flash_write_poll(SerialFlashState *sf);
+uint8_t serial_flash_spi_read(SerialFlashState *sf);
+void serial_flash_spi_write(SerialFlashState *sf, uint8_t value);
 
-unsigned int eos_handle_sfio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sio_serialflash ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sfdma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+unsigned int eos_handle_sfio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sio_serialflash(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
 #endif
 

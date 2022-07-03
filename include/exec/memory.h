@@ -2254,8 +2254,8 @@ static inline MemOp devend_memop(enum device_endian end)
  * @access_mode: bit field (PROT_READ, PROT_WRITE); fixme - better constants? define new ones?
  */
 void memory_set_access_logging_cb(
-    void (*mem_log_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write),
-    void * opaque, int access_mode);
+    void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
+    int access_mode);
 
 #endif
 

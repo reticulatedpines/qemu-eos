@@ -413,14 +413,11 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
     return;
 }
 
-static void (*tb_exec_cb)(void *opaque, CPUState *cpu, TranslationBlock *tb);
-static void * tb_exec_opaque;
+static void (*tb_exec_cb)(CPUState *cpu, TranslationBlock *tb);
 
-void cpu_set_tb_exec_cb(void (*cb)(void *opaque, CPUState *cpu, TranslationBlock *tb),
-                        void *opaque)
+void cpu_set_tb_exec_cb(void (*cb)(CPUState *cpu, TranslationBlock *tb))
 {
     tb_exec_cb = cb;
-    tb_exec_opaque = opaque;
 }
 
 static inline TranslationBlock *tb_find(CPUState *cpu,
@@ -449,7 +446,7 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
     }
 #endif
     if (tb_exec_cb) {
-        tb_exec_cb(tb_exec_opaque, cpu, tb);
+        tb_exec_cb(cpu, tb);
     }
     /* See if we can patch the calling TB. */
     if (last_tb) {

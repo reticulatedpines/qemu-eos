@@ -17,12 +17,12 @@
 #define EOSState void
 #define scnprintf snprintf /* FIXME */
 
-static const char * eos_get_current_task_name(EOSState *s)
+static const char *eos_get_current_task_name(void)
 {
     return get_current_task_name();
 }
 
-static int eos_get_current_task_stack(EOSState *s, uint32_t * top, uint32_t * bottom)
+static int eos_get_current_task_stack(uint32_t *top, uint32_t *bottom)
 {
     *bottom = current_task->stackStartAddr;
     *top = *bottom + current_task->stackSize;
@@ -149,7 +149,7 @@ static inline int possibly_func_start(uint32_t dest)
     return 0;
 }
 
-static const char * called_func(uint32_t pc)
+static const char *called_func(uint32_t pc)
 {
     static char buf[16];
     snprintf(buf, sizeof(buf), "0xUNKNOWN ");
@@ -214,7 +214,7 @@ static void handle_tail_call_pop_lr(uint32_t pc, uint32_t dest, uint32_t *plr, u
 /* emulate one instruction, updating pc, lr and sp */
 /* fixme: ARM only */
 /* returns 1 if a return address was found; otherwise 0 */
-static int sim_instr(EOSState *s,
+static int sim_instr(
     uint32_t *ppc, uint32_t *plr, uint32_t *psp
 #ifdef BKT_RANDOM_BRANCHES
     , uint32_t *pcond
@@ -523,7 +523,7 @@ ret_caller_found:
     #undef assert_retry
 }
 
-static uint32_t find_caller(EOSState *s, uint32_t pc, uint32_t *psp)
+static uint32_t find_caller(uint32_t pc, uint32_t *psp)
 {
     uint32_t pc0 = pc;
     uint32_t lr = 0;
@@ -553,9 +553,9 @@ static uint32_t find_caller(EOSState *s, uint32_t pc, uint32_t *psp)
                 /* don't take any conditional branches on first try */
                 cond = 0xE0000000;
             }
-            int ret = sim_instr(s, &pc, &lr, &sp, &cond);
+            int ret = sim_instr(&pc, &lr, &sp, &cond);
 #else
-            int ret = sim_instr(s, &pc, &lr, &sp);
+            int ret = sim_instr(&pc, &lr, &sp);
 #endif
             if (ret == -1)
             {
@@ -645,7 +645,7 @@ static uint32_t find_caller(EOSState *s, uint32_t pc, uint32_t *psp)
     return 0;
 }
 
-void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
+void eos_backtrace_rebuild(char *buf, int size)
 {
 #ifdef CONFIG_MAGICLANTERN
     //uint32_t pc = (uint32_t) &eos_backtrace_rebuild;
@@ -658,7 +658,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
 #endif
 
     uint32_t stack_top, stack_bot;
-    if (!eos_get_current_task_stack(s, &stack_top, &stack_bot))
+    if (!eos_get_current_task_stack(&stack_top, &stack_bot))
     {
         return;
     }
@@ -674,7 +674,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
     /* we need something to cross-check against :) */
     assert(qemu_loglevel_mask(EOS_LOG_CALLSTACK));
 
-    int max_depth = eos_callstack_get_caller_param(s, 0, CALL_DEPTH);
+    int max_depth = eos_callstack_get_caller_param(0, CALL_DEPTH);
     int d = 1;
     int error = 0;
 #endif
@@ -682,7 +682,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
     /* rebuild the call stack trace by walking the stack */
     while (i < COUNT(lrs))
     {
-        lr = find_caller(s, lr, &sp);
+        lr = find_caller(lr, &sp);
 
         if (sp >= stack_top)
         {
@@ -717,7 +717,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
         }
         else
         {
-            uint32_t expected_lr = eos_callstack_get_caller_param(s, d++, CALL_LOCATION) + 4;
+            uint32_t expected_lr = eos_callstack_get_caller_param(d++, CALL_LOCATION) + 4;
             if (lr != expected_lr)
             {
                 error = 1;
@@ -735,16 +735,16 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
     if (error)
     {
         /* print some info to diagnose the error */
-        eos_callstack_print_verbose(s);
+        eos_callstack_print_verbose();
         uint32_t lr = CURRENT_CPU->env.regs[14];
         uint32_t sp = CURRENT_CPU->env.regs[13];
         d = 1;
         while (sp < stack_top)
         {
-            lr = find_caller(s, lr, &sp);
+            lr = find_caller(lr, &sp);
             if (sp >= stack_top) break;
             if (!lr) break;            
-            uint32_t expected_lr = eos_callstack_get_caller_param(s, d++, CALL_LOCATION) + 4;
+            uint32_t expected_lr = eos_callstack_get_caller_param(d++, CALL_LOCATION) + 4;
             printf("lr %x exp %x %s\n", lr, expected_lr, lr == expected_lr ? "" : "!!!");
         }
         assert(!error);
@@ -758,7 +758,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
     {
         int len = fprintf(stderr, "Current stack: [%x-%x] sp=%x lr=%x", stack_top, stack_bot, sps[0], lrs[0]);
         len += eos_indent(len, 80);
-        len += eos_print_location(s, pc, lrs[0], "  @ ", "\n");
+        len += eos_print_location(pc, lrs[0], "  @ ", "\n");
 
         /* now go backwards and print the stack trace */
         int depth = 0;
@@ -767,7 +767,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
             int len = eos_indent(0, depth++);
             len += fprintf(stderr, "%s ", called_func(lrs[i] - 4));
             len += eos_indent(len, 80);
-            len += eos_print_location(s, lrs[i] - 4, sps[i], "  @ ", " (pc:sp)\n");
+            len += eos_print_location(lrs[i] - 4, sps[i], "  @ ", " (pc:sp)\n");
         }
     }
 #endif
@@ -776,7 +776,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
     {
         int len = scnprintf(buf, size,
             "%s stack: %x [%x-%x]\n",
-            eos_get_current_task_name(s),
+            eos_get_current_task_name(),
             sps[0], stack_top, stack_bot
         );
         while (--i >= 0)
@@ -806,7 +806,7 @@ void eos_backtrace_rebuild(EOSState *s, char * buf, int size)
  * are emulated correctly in sim_instr (regarding SP, LR and PC)
  * to enable: define BKT_CROSSCHECK_EXEC in backtrace.h
  * and run with e.g. -d callstack */
-void eos_bkt_log_exec(EOSState *s)
+void eos_bkt_log_exec(void)
 {
     static uint32_t prev_pc = 0;
     static uint32_t prev_lr = 0;
@@ -832,9 +832,9 @@ void eos_bkt_log_exec(EOSState *s)
 
 #ifdef BKT_RANDOM_BRANCHES
         uint32_t scond = 0xE0000000;
-        int ret = sim_instr(s, &spc, &slr, &ssp, &scond);
+        int ret = sim_instr(&spc, &slr, &ssp, &scond);
 #else
-        int ret = sim_instr(s, &spc, &slr, &ssp);
+        int ret = sim_instr(&spc, &slr, &ssp);
 #endif
         if (ret != -1)
         {
@@ -878,14 +878,14 @@ end:
 void backtrace_print()
 {
     char buf[512];
-    void * sp = (void *) read_sp();
+    void *sp = (void *)read_sp();
     eos_backtrace_rebuild(sp, buf, sizeof(buf));
     puts(buf);
 }
 
-void __attribute__((naked)) backtrace_getstr(char * buf, int size)
+void __attribute__((naked)) backtrace_getstr(char *buf, int size)
 {
-    void * sp = (void *) read_sp();
+    void *sp = (void *)read_sp();
     eos_backtrace_rebuild(sp, buf, size);
 }
 #endif

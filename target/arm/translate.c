@@ -968,23 +968,19 @@ static void gen_aa32_st_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
 /* fixme: use MemoryRegionOps? The read callback doesn't accept address and value */
 struct mem_log
 {
-    void (*read_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write);
-    void * read_arg;
-    void (*write_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write);
-    void * write_arg;
+    void (*read_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write);
+    void (*write_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write);
 } mem_log;
 
 void memory_set_access_logging_cb(
-    void (*mem_log_cb)(void * opaque, hwaddr addr, uint64_t value, unsigned size, int is_write),
-    void * opaque, int access_mode)
+    void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
+    int access_mode)
 {
     if (access_mode & PROT_READ) {
         mem_log.read_cb = mem_log_cb;
-        mem_log.read_arg = opaque;
     }
     if (access_mode & PROT_WRITE) {
         mem_log.write_cb = mem_log_cb;
-        mem_log.write_arg = opaque;
     }
 }
 
@@ -993,7 +989,7 @@ void log_ldr_cb(uint32_t addr, uint32_t value, uint32_t opc)
 {
     if (mem_log.read_cb) {
         unsigned size = 1 << (opc & MO_SIZE);
-        mem_log.read_cb(mem_log.read_arg, addr, value, size, 0);
+        mem_log.read_cb(addr, value, size, 0);
     }
 }
 
@@ -1002,7 +998,7 @@ void log_str_cb(uint32_t addr, uint32_t value, uint32_t opc)
 {
     if (mem_log.write_cb) {
         unsigned size = 1 << (opc & MO_SIZE);
-        mem_log.write_cb(mem_log.write_arg, addr, value, size, 1);
+        mem_log.write_cb(addr, value, size, 1);
     }
 }
 

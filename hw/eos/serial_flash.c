@@ -19,7 +19,7 @@
 #define EE_EPRINTF(fmt, ...) EPRINTF("[EEPROM] ", EOS_LOG_SFLASH, fmt, ## __VA_ARGS__)
 #define EE_VPRINTF(fmt, ...) VPRINTF("[EEPROM] ", EOS_LOG_SFLASH, fmt, ## __VA_ARGS__)
 
-static const char * spi_opname(int code)
+static const char *spi_opname(int code)
 {
     switch (code) {
         case 0x01: return "WRSR";    // Write Status Register
@@ -36,17 +36,17 @@ static const char * spi_opname(int code)
     }
 }
 
-SerialFlashState * serial_flash_init(const char * filename, size_t size)
+SerialFlashState *serial_flash_init(const char *filename, size_t size)
 {
     // Allocate
-    SerialFlashState * sf = (SerialFlashState*) malloc(sizeof(SerialFlashState));
+    SerialFlashState *sf = (SerialFlashState*) malloc(sizeof(SerialFlashState));
     if (sf == NULL) {
         return NULL;
     }
 
     // Initialize struct
     memset(sf,0,sizeof(SerialFlashState));
-    sf->data = (uint8_t*) malloc(size);
+    sf->data = (uint8_t*)malloc(size);
     sf->size = size;
     memcpy(sf->RDID_seq, (uint8_t[3])RDID_MACRONIX, sizeof(sf->RDID_seq));
 
@@ -57,7 +57,7 @@ SerialFlashState * serial_flash_init(const char * filename, size_t size)
     }
 
     // Initialize data
-    FILE * f = (filename != NULL) ? fopen(filename, "rb") : NULL;
+    FILE *f = (filename != NULL) ? fopen(filename, "rb") : NULL;
     if (f != NULL) {
         fprintf(stderr, "[EOS] loading '%s' as serial flash, size=0x%X\n", filename, (int) size);
         size_t read_size = fread(sf->data, sizeof(uint8_t), size, f);
@@ -74,13 +74,13 @@ SerialFlashState * serial_flash_init(const char * filename, size_t size)
     return sf;
 }
 
-void serial_flash_free(SerialFlashState * sf)
+void serial_flash_free(SerialFlashState *sf)
 {
     free(sf->data);
     free(sf);
 }
 
-void serial_flash_set_CS(SerialFlashState * sf, int value)
+void serial_flash_set_CS(SerialFlashState *sf, int value)
 {
     if (value == 1) {
         if (sf->state == 0x03) { // Read array
@@ -98,14 +98,14 @@ void serial_flash_set_CS(SerialFlashState * sf, int value)
     EE_DPRINTF("CS = %d\n", value);
 }
 
-uint8_t serial_flash_write_poll(SerialFlashState * sf)
+uint8_t serial_flash_write_poll(SerialFlashState *sf)
 {
     uint8_t ret = (sf->write_poll > 0) ? 1 : 0;
     if (ret) sf->write_poll--;
     return ret;
 }
 
-uint8_t serial_flash_spi_read(SerialFlashState * sf)
+uint8_t serial_flash_spi_read(SerialFlashState *sf)
 {
     uint8_t ret = sf->read_value;
     switch (sf->state) {
@@ -150,7 +150,7 @@ uint8_t serial_flash_spi_read(SerialFlashState * sf)
     return ret;
 }
 
-void serial_flash_spi_write(SerialFlashState * sf, uint8_t value)
+void serial_flash_spi_write(SerialFlashState *sf, uint8_t value)
 {
     // If standby
     if (sf->state == 0)
@@ -270,24 +270,24 @@ void serial_flash_spi_write(SerialFlashState * sf, uint8_t value)
 #define BLOCK_SIZE   0x7F0
 #define BLOCK_OFFSET 0x800
 
-static void sfio_do_transfer( EOSState *s)
+static void sfio_do_transfer(void)
 {
     SF_DPRINTF("eos_handle_sfio (copying now)\n");
 
     // FIXME: bad bad
-    SDIOState * sd = &s->sf->sd;
+    SDIOState *sd = &eos_state->sf->sd;
 
     // FIXME sanitize addresses, this can seriously break stuff
-    void * source = &s->sf->data[s->sf->data_pointer];
+    void *source = &eos_state->sf->data[eos_state->sf->data_pointer];
     fprintf(stderr, "[EEPROM-DMA]! [0x%X] -> [0x%X] (0x%X bytes)\n", 
-           s->sf->data_pointer, sd->dma_addr, sd->dma_count);
+           eos_state->sf->data_pointer, sd->dma_addr, sd->dma_count);
 
     /* the data appears screwed up a bit - offset by half-byte?! */
     int num_blocks = (sd->dma_count + BLOCK_SIZE - 1) / BLOCK_SIZE;
     // TODO assert that num_blocks is equal to num blocks sent to controller
     // TODO assert that BLOCK_SIZE is equal to block size sent to controller
     for (int i = 0; i < num_blocks; i++) {
-        uint8_t * block_src = (uint8_t*)(source + i*BLOCK_OFFSET);
+        uint8_t *block_src = (uint8_t*)(source + i*BLOCK_OFFSET);
         uint32_t  block_dst = (uint32_t)(sd->dma_addr + i*BLOCK_SIZE);
         uint8_t block[BLOCK_SIZE];
         for (int j = 0; j < BLOCK_SIZE; j++) {
@@ -305,24 +305,24 @@ static void sfio_do_transfer( EOSState *s)
                 );
             }
         }
-        eos_mem_write(s, block_dst, block, BLOCK_SIZE);
+        eos_mem_write(block_dst, block, BLOCK_SIZE);
     }
     sd->dma_count = 0;
             //sdio_write_data(sd);
-            //sfio_trigger_interrupt(s);
+            //sfio_trigger_interrupt(sd);
 
-// if (false)                    sfio_trigger_interrupt(s,sd);
+// if (false)                    sfio_trigger_interrupt(sd);
 }
 
-static unsigned int sfio_trigger_int_DMA ( EOSState *s )
+static unsigned int sfio_trigger_int_DMA(void)
 {
     SF_DPRINTF("sfio_trigger_int_DMA\n");
-    sfio_do_transfer(s);
-    eos_trigger_int(s, s->model->serial_flash_interrupt, 0);
+    sfio_do_transfer();
+    eos_trigger_int(eos_state->model->serial_flash_interrupt, 0);
     return 0;
 }
 
-static inline void sfio_trigger_interrupt(EOSState *s, SDIOState *sd)
+static inline void sfio_trigger_interrupt(SDIOState *sd)
 {
     SF_DPRINTF("sfio_trigger_interrupt IN\n");
     /* after a successful operation, trigger int 0xB1 if requested */
@@ -337,21 +337,21 @@ static inline void sfio_trigger_interrupt(EOSState *s, SDIOState *sd)
     
 //    if ((sd->status & 3) == 1 && sd->irq_flags)
 //    {
-        eos_trigger_int(s, s->model->serial_flash_interrupt, 0);
-        //eos_trigger_int(s, 0xB1, 0);
+        eos_trigger_int(eos_state->model->serial_flash_interrupt, 0);
+        //eos_trigger_int(0xB1, 0);
 //    }
     SF_DPRINTF("sfio_trigger_interrupt OUT\n");
 }
 
-unsigned int eos_handle_sfio ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sfio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
 
     // FIXME: bad bad
-    SDIOState * sd = &s->sf->sd;
+    SDIOState *sd = &eos_state->sf->sd;
 
     switch(address & 0xFFF)
     {
@@ -377,7 +377,7 @@ unsigned int eos_handle_sfio ( unsigned int parm, EOSState *s, unsigned int addr
                 if (value == 0x14)
                 {
                     sd->status &= ~1;
-                    sfio_do_transfer(s);
+                    sfio_do_transfer();
                 }
             }
             break;
@@ -416,7 +416,7 @@ unsigned int eos_handle_sfio ( unsigned int parm, EOSState *s, unsigned int addr
             /* sometimes this register is configured after the transfer is started */
             /* since in our implementation, transfers are instant, this would miss the interrupt,
              * so we trigger it from here too. */
-            //sfio_trigger_interrupt(s,sd);
+            //sfio_trigger_interrupt(sd);
             break;
         case 0x18:
             msg = "init?";
@@ -480,24 +480,24 @@ unsigned int eos_handle_sfio ( unsigned int parm, EOSState *s, unsigned int addr
             msg = "SDBUFCTR: Set to 0x03 before reading";
             if (type & MODE_WRITE && value == 0x20) {
                 msg = "Set to 0x20 after address set (SFBUFCTR?)";
-                sfio_trigger_int_DMA(s);
+                sfio_trigger_int_DMA();
             }
             break;
     }
 
     if (qemu_loglevel_mask(EOS_LOG_SFLASH)) {
-        io_log("SFIO", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+        io_log("SFIO", address, type, value, ret, msg, msg_arg1, msg_arg2);
     }
     return ret;
 }
 
-unsigned int eos_handle_sfdma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
     // FIXME: bad bad
-    SDIOState * sd = &s->sf->sd;
+    SDIOState *sd = &eos_state->sf->sd;
 
     switch(address & 0x1F)
     {
@@ -526,19 +526,19 @@ unsigned int eos_handle_sfdma ( unsigned int parm, EOSState *s, unsigned int add
             break;
     }
 
-    io_log("SFDMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("SFDMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
 #if 0
-static inline unsigned int eos_handle_sfio_old ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+static inline unsigned int eos_handle_sfio_old(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
     intptr_t msg_arg1 = 0;
     intptr_t msg_arg2 = 0;
     static SDIOState _sd; // FIXME: bad bad bad
-    SDIOState * sd = &_sd;
+    SDIOState *sd = &_sd;
 
     switch(address & 0xFFF)
     {
@@ -559,17 +559,17 @@ static inline unsigned int eos_handle_sfio_old ( unsigned int parm, EOSState *s,
                 
                 /* interpret this command */
                 SF_EPRINTF("sdio_send_command (UNHANDLED)\n");
-                // sdio_send_command(&s->sd);
+                // sdio_send_command(&eos_state->sd);
                 sd->status |= (SDIO_STATUS_OK|SDIO_STATUS_DATA_AVAILABLE); // Assume it's OK
                 
                 if (value == 0x14)
                 {
-                    // sfio_do_transfer(s);
+                    // sfio_do_transfer();
                 }
                 
-                //sfio_trigger_interrupt(s);
-                //eos_trigger_int(s, 0x8C, 0); // 17Bh or 162h ?
-                //sfio_trigger_interrupt(s,sd);
+                //sfio_trigger_interrupt(sd);
+                //eos_trigger_int(0x8C, 0); // 17Bh or 162h ?
+                //sfio_trigger_interrupt(sd);
             }
             break;
         case 0x10:
@@ -601,13 +601,13 @@ static inline unsigned int eos_handle_sfio_old ( unsigned int parm, EOSState *s,
             if (sd->cmd_flags == 0x13 && sd->dma_enabled && value)
             {
                 SF_EPRINTF("sfio_write_data (UNHANDLED)\n");
-                //sdio_write_data(&s->sd);
+                //sdio_write_data(&eos_state->sd);
             }
 
             /* sometimes this register is configured after the transfer is started */
             /* since in our implementation, transfers are instant, this would miss the interrupt,
              * so we trigger it from here too. */
-            //sfio_trigger_interrupt(s,sd);
+            //sfio_trigger_interrupt(sd);
             break;
         case 0x18:
             msg = "init?";
@@ -682,23 +682,23 @@ static inline unsigned int eos_handle_sfio_old ( unsigned int parm, EOSState *s,
             msg = "SDBUFCTR: Set to 0x03 before reading";
             if (type & MODE_WRITE && value == 0x20) {
                 msg = "SFBUFCTR: Set to 0x20 after address set";
-                // s->sd.dma_addr = value;
-                // s->sd.dma_count = value;
+                // eos_state->sd.dma_addr = value;
+                // eos_state->sd.dma_count = value;
             }
             break;
     }
 
-    io_log("SFIO", s, address, type, value, ret, msg, msg_arg1, msg_arg2);
+    io_log("SFIO", address, type, value, ret, msg, msg_arg1, msg_arg2);
     return ret;
 }
 #endif
 
-unsigned int eos_handle_sio_serialflash ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_sio_serialflash(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 
-    if (s->sf == NULL)
+    if (eos_state->sf == NULL)
     {
         goto end;
     }
@@ -708,7 +708,7 @@ unsigned int eos_handle_sio_serialflash ( unsigned int parm, EOSState *s, unsign
         case 0x04:
             if (type & MODE_READ) {
                 msg = "busy (write poll)";
-                ret = serial_flash_write_poll(s->sf);
+                ret = serial_flash_write_poll(eos_state->sf);
             }
             break;
         case 0x10:
@@ -717,19 +717,19 @@ unsigned int eos_handle_sio_serialflash ( unsigned int parm, EOSState *s, unsign
         case 0x18:
             msg = "write";
             if (type & MODE_WRITE) {
-                serial_flash_spi_write(s->sf,value);
+                serial_flash_spi_write(eos_state->sf,value);
             }
             break;
         case 0x1C:
             msg = "read";
             if (type & MODE_READ) {
-                ret = serial_flash_spi_read(s->sf);
+                ret = serial_flash_spi_read(eos_state->sf);
             }
             // last_was_tx = 1;
             break;
         case 0x38:
             msg = "mode";
-            MMIO_VAR(s->sf->mode);
+            MMIO_VAR(eos_state->sf->mode);
             break;
     }
 
@@ -739,7 +739,7 @@ end:
     {
         char sio_name[16];
         snprintf(sio_name, sizeof(sio_name), "SIO%d-SF", parm);
-        io_log(sio_name, s, address, type, value, ret, msg, 0, 0);
+        io_log(sio_name, address, type, value, ret, msg, 0, 0);
     }
     return ret;
 }
@@ -747,10 +747,10 @@ end:
 #if 0
 // Unused, for testing
 
-unsigned int eos_handle_spidma ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+unsigned int eos_handle_spidma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
-    const char * msg = 0;
+    const char *msg = NULL;
 //    int i;
 
     static uint32_t dma_addr = 0;
@@ -758,7 +758,7 @@ unsigned int eos_handle_spidma ( unsigned int parm, EOSState *s, unsigned int ad
     static uint32_t dma_delay = 0;
 
 
-    if (s->sf == NULL) return 0;
+    if (eos_state->sf == NULL) return 0;
 
     switch(address & 0xFFF)
     {
@@ -785,9 +785,9 @@ unsigned int eos_handle_spidma ( unsigned int parm, EOSState *s, unsigned int ad
                     ret = 0;
                     if (dma_count > 0)
                     {
-                        void * source = &s->sf->data[s->sf->data_pointer];
-                        fprintf(stderr, "[EEPR-DMA]  [0x%X] -> [0x%X] (0x%X bytes)\n", s->sf->data_pointer, dma_addr, dma_count);
-                        eos_mem_write(s, dma_addr, source, dma_count);
+                        void *source = &eos_state->sf->data[s->sf->data_pointer];
+                        fprintf(stderr, "[EEPR-DMA]  [0x%X] -> [0x%X] (0x%X bytes)\n", eos_state->sf->data_pointer, dma_addr, dma_count);
+                        eos_mem_write(dma_addr, source, dma_count);
                         dma_count = 0;
                     }
                 }
@@ -797,16 +797,16 @@ unsigned int eos_handle_spidma ( unsigned int parm, EOSState *s, unsigned int ad
         case 0x38:
             msg = "Transfer start?";
 
-            //eos_mem_write(s, dma_addr, &sf_data[sf_address], dma_count);
+            //eos_mem_write(dma_addr, &sf_data[sf_address], dma_count);
             if (dma_count > 0)
             {
-                void * source = &s->sf->data[s->sf->data_pointer];
-                fprintf(stderr, "[EEPR-DMA]! [0x%X] -> [0x%X] (0x%X bytes)\n", s->sf->data_pointer, dma_addr, dma_count);
-                eos_mem_write(s, dma_addr, source, dma_count);
+                void *source = &eos_state->sf->data[eos_state->sf->data_pointer];
+                fprintf(stderr, "[EEPR-DMA]! [0x%X] -> [0x%X] (0x%X bytes)\n", eos_state->sf->data_pointer, dma_addr, dma_count);
+                eos_mem_write(dma_addr, source, dma_count);
                 dma_count = 0;
             }
-            //sdio_write_data(&s->sd);
-            //sfio_trigger_interrupt(s);
+            //sdio_write_data(&eos_state->sd);
+            //sfio_trigger_interrupt(sd);
 
             break;
 
@@ -816,7 +816,7 @@ unsigned int eos_handle_spidma ( unsigned int parm, EOSState *s, unsigned int ad
             break;
     }
 
-    io_log("EEPR-DMA", s, address, type, value, ret, msg, 0, 0);
+    io_log("EEPR-DMA", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 #endif // #if 0

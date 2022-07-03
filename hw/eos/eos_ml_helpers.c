@@ -25,7 +25,8 @@ static void print_char(char value)
         len = 0;
     }
 }
-unsigned int eos_handle_ml_helpers ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value )
+
+unsigned int eos_handle_ml_helpers(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     if(type & MODE_WRITE)
     {
@@ -55,10 +56,10 @@ unsigned int eos_handle_ml_helpers ( unsigned int parm, EOSState *s, unsigned in
                 {
                     /* Thumb instruction: wide if bits [15:11] of current halfword
                      * are 0b11101/0b11110/0b11111 (A6.1 in ARMv7-AR) */
-                    uint32_t bits = eos_get_mem_h(s, value & ~1) >> 11;
+                    uint32_t bits = eos_get_mem_h(value & ~1) >> 11;
                     size = (bits == 0b11101 || bits == 0b11110 || bits == 0b11111) ? 4 : 2;
                 }
-                target_disas(stderr, CPU(env_archcpu(&s->cpu0->env)), value, size);
+                target_disas(stderr, CPU(env_archcpu(&eos_state->cpu0->env)), value, size);
                 fprintf(stderr, KRESET);
                 return 0;
         }
@@ -67,7 +68,7 @@ unsigned int eos_handle_ml_helpers ( unsigned int parm, EOSState *s, unsigned in
     switch (address & 0xFF)
     {
         case REG_CALLSTACK & 0xFF:
-            eos_callstack_print_verbose(s);
+            eos_callstack_print_verbose();
             return 0;
     }
 

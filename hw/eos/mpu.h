@@ -9,14 +9,14 @@
 #define ARG3 0x0103
 #define MPU_SHUTDOWN 0xFFFF
 
-void mpu_spells_init(EOSState *s);
-void mpu_handle_sio3_interrupt(EOSState *s);
-void mpu_handle_mreq_interrupt(EOSState *s);
-unsigned int eos_handle_mpu(unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_sio3 ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
-unsigned int eos_handle_mreq ( unsigned int parm, EOSState *s, unsigned int address, unsigned char type, unsigned int value );
+void mpu_spells_init(void);
+void mpu_handle_sio3_interrupt(void);
+void mpu_handle_mreq_interrupt(void);
+unsigned int eos_handle_mpu(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sio3(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_mreq(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
-void mpu_send_keypress(EOSState *s, int keycode);
+void mpu_send_keypress(int keycode);
 
 enum button_codes
 {

@@ -4,20 +4,20 @@
 
 #include "../eos.h"
 
-void eos_logging_init(EOSState *s);
+void eos_logging_init(void);
 
-void eos_log_mem(void * opaque, hwaddr addr, uint64_t value, uint32_t size, int flags);
+void eos_log_mem(hwaddr addr, uint64_t value, uint32_t size, int flags);
 
 /* print spaces to stderr according to call stack depth */
-int eos_callstack_indent(EOSState *s);
+int eos_callstack_indent(void);
 
 /* just get the value, without printing */
-int eos_callstack_get_indent(EOSState *s);
+int eos_callstack_get_indent(void);
 
 /* print the current call stack to stderr */
-int eos_callstack_print(EOSState *s, const char * prefix, const char * sep, const char * suffix);
+int eos_callstack_print(const char *prefix, const char *sep, const char *suffix);
 
-void eos_callstack_print_verbose(EOSState *s);
+void eos_callstack_print_verbose(void);
 
 /* get one parameter (register, function argument etc) from any caller on the stack */
 enum param_type {
@@ -26,19 +26,19 @@ enum param_type {
     CALLER_NUM_ARGS = -6, CALL_LOCATION = -7,
     CALLER_ARG = 0, /* any positive number = function argument */
 };
-uint32_t eos_callstack_get_caller_param(EOSState *s, int call_depth, enum param_type param_type);
+uint32_t eos_callstack_get_caller_param(int call_depth, enum param_type param_type);
 
 /* print location (pc:lr, annotated with current task or interrupt) */
-int eos_print_location(EOSState *s, uint32_t pc, uint32_t lr, const char * prefix, const char * suffix);
+int eos_print_location(uint32_t pc, uint32_t lr, const char *prefix, const char *suffix);
 
 /* print current location, matching GDB DebugMsg format */
-int eos_print_location_gdb(EOSState *s);
+int eos_print_location_gdb(void);
 
 /* helper to parse an environment variable supposed to contain a hex address */
-void eos_getenv_hex(const char * env_name, uint32_t * var, uint32_t default_value);
+void eos_getenv_hex(const char *env_name, uint32_t *var, uint32_t default_value);
 
 /* indent helper */
 int eos_indent(int initial_len, int target_indent);
 
 /* log the DebugMsg call at current address */
-void DebugMsg_log(EOSState * s);
+void DebugMsg_log(void);
