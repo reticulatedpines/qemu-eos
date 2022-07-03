@@ -41,4 +41,4 @@ void eos_getenv_hex(const char *env_name, uint32_t *var, uint32_t default_value)
 int eos_indent(int initial_len, int target_indent);
 
 /* log the DebugMsg call at current address */
-void DebugMsg_log(void);
+void DebugMsg_log(unsigned int cpu_index);
