@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import zipfile
 import lzma
+import shutil
 from collections import namedtuple
 
 
@@ -100,6 +101,7 @@ def build_qemu(source_dir):
                   '--extra-cflags="-Wno-deprecated-declarations"',]
     elif version.major == 4:
         config = ["./configure", "--target-list=arm-softmmu",
+                  "--enable-plugins",
                   "--disable-docs", "--enable-vnc", "--enable-gtk"]
     else:
         raise QemuBuilderError("unexpected Qemu version: %d.%d.%d" % version)
@@ -111,15 +113,28 @@ def build_qemu(source_dir):
     run(command=["make", "-j" + str(os.cpu_count())],
         error_message="make failed for Qemu: ",
         cwd=build_dir)
+    if version.major == 4:
+        run(command=["make", "plugins"],
+            error_message="make failed for Qemu plugins: ",
+            cwd=build_dir)
 
     zip_file = "qemu_" + str(version.major) + ".zip"
     # zip built arm-softmmu, ML utils, per cam GDB scripts, disk images.
+    # Plugins if Qemu 4.
     # Mangle the paths appropriately.
     with zipfile.ZipFile(zip_file, "w") as zipf:
         zip_path_prefix = "qemu-eos-build"
 
-        # add arm-softmmu
+        # copy plugins to arm-softmmu
+        plugins = ["libmagiclantern.so"]
         arm_softmmu_dir = os.path.join(build_dir, "arm-softmmu")
+        for p in plugins:
+            # later versions of Qemu have a contrib dir for plugins,
+            # rather than test/plugins, so this will fail and need updating
+            shutil.copy(os.path.join(build_dir, "tests", "plugin", p),
+                        os.path.join(arm_softmmu_dir, "plugins"))
+
+        # add arm-softmmu
         for (root, _, files) in os.walk(arm_softmmu_dir):
             for f in files:
                 fullpath = os.path.join(root, f)

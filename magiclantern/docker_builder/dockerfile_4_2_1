@@ -34,8 +34,10 @@ tar -xf ../qemu_src.tar
 # build qemu
 ENV NUM_CPUS=16
 RUN cd qemu-eos-build && \
-./configure --target-list=arm-softmmu --disable-docs --enable-vnc --enable-gtk && \
-make -j $NUM_CPUS
+./configure --target-list=arm-softmmu --enable-plugins --disable-docs --enable-vnc --enable-gtk && \
+make -j $NUM_CPUS && \
+make plugins && \
+cp tests/plugin/libmagiclantern.so arm-softmmu/plugins/
 
 # zip runtime for copy to host
 RUN zip qemu_4.zip -r qemu-eos-build/arm-softmmu
