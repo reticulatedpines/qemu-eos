@@ -665,7 +665,7 @@ struct eos_model_desc eos_model_list[] = {
         .ram_extra_size[0]      = 0x01000000,
         .current_task_name_offs = 0x09,
         .dryos_timer_id         = 1,
-       .dryos_timer_interrupt  = 0x1B,
+        .dryos_timer_interrupt  = 0x1B,
         .hptimer_interrupt      = 0x28,
         .sd_driver_interrupt    = 0xEE,         // M50: OK
         .sd_dma_interrupt       = 0xBE,
@@ -696,6 +696,21 @@ struct eos_model_desc eos_model_list[] = {
         .uart_tx_interrupt      = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be validated.
         .rom0_size              = 0x02000000,   /* 32MB (main ROM) */
         .rom1_size              = 0x02000000,   /* 32MB (secondary ROM) */
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+    },
+    {
+        .name                   = MODEL_NAME_850D,
+        .digic_version          = 8,
+        .ram_size               = 0x80000000,   // 3GB?  smemShowFix has things in BA region. 
+                                                // This will mean changes are required to CACHEABLE etc macros.
+                                                // Might be 2GB depending on how mirroring between 0x1000 and 0x40001000
+                                                // works, listed as that for now, may be simpler.
+        .card_led_address       = 0xD01300D4,
+        .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt      = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be validated.
+        .uart_tx_interrupt      = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be validated.
+        .rom0_size              = 0x02000000,   /* 32MB (main ROM) */
+        .rom1_size              = 0x01000000,   /* 32MB (secondary ROM) */
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
     {
