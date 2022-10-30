@@ -44,22 +44,18 @@ def parse_args():
     # 1) the repo location - qemu-eos/magiclantern/run_qemu.py
     # 2) the extracted build from the zip - qemu-eos-build/run_qemu.py
     #
-    # Here we try to detect these cases and provide an appropriate default.
+    # Here we try to detect these cases and provide appropriate defaults.
     if os.path.split(os.getcwd())[1] == "qemu-eos-build":
         build_dir_default = "."
+        rom_dir_default = os.path.join("..", "roms")
     else:
         build_dir_default = os.path.join("..", "..", "qemu-eos-build")
+        rom_dir_default = os.path.join("..", "..", "roms")
+
     parser.add_argument("-q", "--qemu_build_dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                               build_dir_default)),
                         help="build dir for ML Qemu, default: %(default)s")
-
-    # Similar to above, the ROM dir will be in a different (relative) place,
-    # depending on if we're running direct from repo, or from extracted build.
-    if os.path.split(os.getcwd())[1] == "qemu-eos-build":
-        rom_dir_default = os.path.join("..", "roms")
-    else:
-        rom_dir_default = os.path.join("..", "..", "roms")
     parser.add_argument("-r", "--rom_dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                               rom_dir_default)),
