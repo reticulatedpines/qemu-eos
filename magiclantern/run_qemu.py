@@ -11,7 +11,8 @@ def main():
     args = parse_args()
 
     try:
-        with QemuRunner(args.qemu_build_dir, args.rom_dir, args.model) as q:
+        with QemuRunner(args.qemu_build_dir, args.rom_dir, args.source_dir,
+                        args.model) as q:
             q.qemu_process.wait()
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
@@ -48,9 +49,11 @@ def parse_args():
     if os.path.split(os.getcwd())[1] == "qemu-eos-build":
         build_dir_default = "."
         rom_dir_default = os.path.join("..", "roms")
+        script_dir_default = os.path.join("..", "magiclantern_simplified")
     else:
         build_dir_default = os.path.join("..", "..", "qemu-eos-build")
         rom_dir_default = os.path.join("..", "..", "roms")
+        script_dir_default = os.path.join("..", "..", "magiclantern_simplified")
 
     parser.add_argument("-q", "--qemu_build_dir",
                         default=os.path.realpath(os.path.join(script_dir,
@@ -60,6 +63,10 @@ def parse_args():
                         default=os.path.realpath(os.path.join(script_dir,
                                                               rom_dir_default)),
                         help="location of roms, default: %(default)s")
+    parser.add_argument("-s", "--source_dir",
+                        default=os.path.realpath(os.path.join(script_dir,
+                                                              script_dir_default)),
+                        help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
 
     args = parser.parse_args()
 
@@ -70,9 +77,10 @@ def parse_args():
         if not os.path.isdir(os.path.join(args.qemu_build_dir, "arm-softmmu")):
             raise QemuRunnerError("Qemu build dir didn't contain 'arm-softmmu', "
                                   "did the build work?")
-
         if not os.path.isdir(args.rom_dir):
             raise QemuRunnerError("Rom dir didn't exist.")
+        if not os.path.isdir(args.source_dir):
+            raise QemuRunnerError("ML source dir didn't exist.")
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
         sys.exit(-1)
