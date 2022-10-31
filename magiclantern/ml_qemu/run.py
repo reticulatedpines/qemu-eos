@@ -32,7 +32,8 @@ class QemuRunner:
     You can attempt a graceful power down of the VM via q.shutdown(),
     or tell Qemu to force a power down via q.shutdown(force=True)
     """
-    def __init__(self, build_dir, rom_dir, cam,
+    def __init__(self, build_dir, rom_dir, source_dir,
+                 cam,
                  monitor_socket_path="",
                  vnc_display="",
                  boot=False):
@@ -61,10 +62,10 @@ class QemuRunner:
             model = cam + ",firmware=boot=0"
 
         self.qemu_command = [os.path.join(build_dir, "arm-softmmu", "qemu-system-arm"),
-                             "-drive", "if=sd,format=raw,file=" +
-                                     os.path.join(build_dir, "disk_images", "sd.img"),
-                             "-drive", "if=ide,format=raw,file=" +
-                                     os.path.join(build_dir, "disk_images", "cf.img"),
+                             "-drive", "if=sd,file=" +
+                                     os.path.join(build_dir, "disk_images", "sd.qcow2"),
+                             "-drive", "if=ide,file=" +
+                                     os.path.join(build_dir, "disk_images", "cf.qcow2"),
                              "-chardev", "socket,server,nowait,path=" + self.monitor_socket_path + ",id=monsock",
                              "-mon", "chardev=monsock,mode=readline",
                              "-name", cam,

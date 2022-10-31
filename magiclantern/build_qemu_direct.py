@@ -169,11 +169,11 @@ def build_qemu(source_dir):
 
         # add default disk images
         disk_image = lzma.open(os.path.join(script_dir, "disk_images",
-                                            "sd.img.xz")).read()
+                                            "sd.qcow2.xz")).read()
         zipf.writestr(os.path.join(zip_path_prefix, "disk_images",
-                                   "sd.img"), disk_image)
+                                   "sd.qcow2"), disk_image)
         zipf.writestr(os.path.join(zip_path_prefix, "disk_images",
-                                   "cf.img"), disk_image)
+                                   "cf.qcow2"), disk_image)
 
     # cleanup build dir
     if build_dir:
