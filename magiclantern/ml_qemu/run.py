@@ -36,7 +36,8 @@ class QemuRunner:
                  cam,
                  monitor_socket_path="",
                  vnc_display="",
-                 boot=False):
+                 boot=False,
+                 d_args=[]):
         # TODO:
         # handle QEMU_EOS_DEBUGMSG,
         # allow selecting drive images,
@@ -78,6 +79,11 @@ class QemuRunner:
             self.vnc_client = vncdotool.api.connect(self.vnc_display)
         else:
             self.vnc_client = None
+
+        self.d_args = d_args
+        if d_args:
+            d_args_str = ",".join(d_args)
+            self.qemu_command.extend(["-d", d_args_str])
 
     def __enter__(self):
         qemu_env = os.environ

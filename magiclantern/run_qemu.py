@@ -12,8 +12,12 @@ def main():
 
     try:
         with QemuRunner(args.qemu_build_dir, args.rom_dir, args.source_dir,
-                        args.model) as q:
+                        args.model, d_args=args.d_args) as q:
             q.qemu_process.wait()
+            if q.qemu_process.returncode:
+                print("ERROR from qemu (bad -d option?).  Qemu output:")
+                for line in q.qemu_process.stdout:
+                    print(line.decode("utf8").rstrip())
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
         sys.exit(-1)
@@ -67,6 +71,10 @@ def parse_args():
                         default=os.path.realpath(os.path.join(script_dir,
                                                               script_dir_default)),
                         help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
+    parser.add_argument("-d", "--d_args",
+                        nargs="*",
+                        default=[],
+                        help="space separated list of qemu '-d' arguments.  See help for qemu for complete list")
 
     args = parser.parse_args()
 
