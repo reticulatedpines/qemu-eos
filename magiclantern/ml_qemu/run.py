@@ -13,6 +13,37 @@ class QemuRunnerError(Exception):
     pass
 
 
+def get_debugmsg_addr(source_dir, cam):
+    """
+    Extract address for DryosDebugMsg from stubs.S file
+    """
+    platform_path = os.path.join(source_dir, "platform")
+    platform_dirs = next(os.walk(platform_path))[1]
+
+    stubs_path = ""
+    for d in platform_dirs:
+        if d.startswith(cam):
+            stubs_path = os.path.join(platform_path, d, "stubs.S")
+
+    # we expect lines to look something like this:
+    # NSTUB(    0x395c,  DryosDebugMsg) // 0xFFA50C3C - RAM_OFFSET
+    # NSTUB(0xFFAA395C,  DryosDebugMsg)
+    with open(stubs_path, "r") as f:
+        for line in f.readlines():
+            if "DryosDebugMsg" in line \
+                    and line.startswith(("ARM32_FN", "NSTUB", "THUMB_FN")):
+                addr = line.split(",")[0].split("(")[1].lower().strip()
+                if addr.startswith("0x"):
+                    addr_val = int(addr, 16)
+                    # Mask out low bit in case of raw Thumb addr, Qemu requires actual addr
+                    return hex(addr_val >> 1 << 1)
+                else:
+                    print("WARNING: found DryosDebugMsg but couldn't parse address")
+                    return ""
+    print("WARNING: no DryosDebugMsg found in stubs.S, can't enable debugmsg")
+    return ""
+
+
 class QemuRunner:
     """
     Context manager for running Qemu, this allows automatically
@@ -81,6 +112,13 @@ class QemuRunner:
             self.vnc_client = None
 
         self.d_args = d_args
+        if "debugmsg" in d_args:
+            self.debugmsg_addr = get_debugmsg_addr(source_dir, cam)
+            if self.debugmsg_addr:
+                self.qemu_command.extend(["-plugin",
+                                os.path.join(build_dir, "arm-softmmu", "plugins",
+                                             "libmagiclantern.so,arg=debugmsg_addr="
+                                             + self.debugmsg_addr)])
         if d_args:
             d_args_str = ",".join(d_args)
             self.qemu_command.extend(["-d", d_args_str])
