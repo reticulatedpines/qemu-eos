@@ -55,15 +55,20 @@ def parse_args():
                         help="Which cams to test, e.g. 50D 200D.  Defaults to all. "
                              "  Supported cams: %s" % supported_cams)
 
+    default_qemu_dir = os.path.realpath(os.path.join("..", "..", "qemu-eos-build"))
+    parser.add_argument("-q", "--qemu-dir",
+                        default=default_qemu_dir,
+                        help="Location of dir holding qemu-eos install, default: %(default)s")
+
     default_rom_dir = os.path.realpath(os.path.join("..", "..", "roms"))
     parser.add_argument("-r", "--rom-dir",
                         default=default_rom_dir,
                         help="Location of dir holding rom subdirs, default: %(default)s")
 
-    default_qemu_dir = os.path.realpath(os.path.join("..", "..", "qemu-eos-build"))
-    parser.add_argument("-q", "--qemu-dir",
-                        default=default_qemu_dir,
-                        help="Location of dir holding qemu-eos install, default: %(default)s")
+    default_source_dir = os.path.realpath(os.path.join("..", "..", "magiclantern_simplified"))
+    parser.add_argument("-s", "--source-dir",
+                        default=default_source_dir,
+                        help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
 
     default_test_output_dir = os.path.realpath(os.path.join(".", "test_output"))
     parser.add_argument("-t", "--test-output-dir",
@@ -91,14 +96,19 @@ def parse_args():
     else:
         args.fail_early = True
 
+    if not os.path.isdir(args.qemu_dir):
+        print("FAIL: qemu_dir didn't exist / couldn't be "
+              "accessed: %s" % args.qemu_dir)
+        sys.exit(-1)
+
     if not os.path.isdir(args.rom_dir):
         print("FAIL: rom_dir didn't exist / couldn't be "
               "accessed: %s" % args.rom_dir)
         sys.exit(-1)
 
-    if not os.path.isdir(args.qemu_dir):
-        print("FAIL: qemu_dir didn't exist / couldn't be "
-              "accessed: %s" % args.qemu_dir)
+    if not os.path.isdir(args.source_dir):
+        print("FAIL: source_dir didn't exist / couldn't be "
+              "accessed: %s" % args.source_dir)
         sys.exit(-1)
 
     if not args.tests:
