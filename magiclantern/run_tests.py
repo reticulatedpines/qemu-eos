@@ -11,8 +11,9 @@ def main():
     args = parse_args()
 
     suite = ml_tests.test_suite.TestSuite(cams=args.cams,
-                                          rom_dir=args.rom_dir,
                                           qemu_dir=args.qemu_dir,
+                                          rom_dir=args.rom_dir,
+                                          source_dir=args.source_dir,
                                           test_output_dir=args.test_output_dir,
                                           test_names=args.tests,
                                           fail_early=args.fail_early)

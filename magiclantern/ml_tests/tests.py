@@ -97,7 +97,8 @@ class MenuTest(Test):
                             self.cam.code_rom_md5)
 
         # invoke qemu and control it to run the test
-        with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.model,
+        with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
+                        self.cam.model,
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display) as q:
             q.screen_cap_prefix = "menu_test_"

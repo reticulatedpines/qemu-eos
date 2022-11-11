@@ -24,7 +24,7 @@ class Cam(object):
     supported_cams = eos_cams.union(powershot_cams, gui_cams,
                                     sd_cams, cf_cams)
 
-    def __init__(self, cam="", rom_dir=""):
+    def __init__(self, cam="", rom_dir="", source_dir=""):
         if not cam:
             raise CamError("No cam model given")
 
@@ -33,6 +33,10 @@ class Cam(object):
 
         if not rom_dir:
             raise CamError("No rom dir given")
+
+        if not source_dir:
+            raise CamError("No source dir given")
+        self.source_dir = source_dir
 
         rom_subdir = os.path.join(rom_dir, cam)
         if not os.path.isdir(rom_subdir):

@@ -24,8 +24,9 @@ class TestSuite(object):
     """
     def __init__(self, 
                  cams=[],
-                 rom_dir="",
                  qemu_dir="",
+                 rom_dir="",
+                 source_dir="",
                  test_output_dir="",
                  test_names=[],
                  fail_early=True
@@ -78,7 +79,7 @@ class TestSuite(object):
             os.mkdir(test_output_sub_dir)
         self.test_output_dir = test_output_sub_dir
 
-        self.cams = [Cam(c, rom_dir) for c in cams]
+        self.cams = [Cam(c, rom_dir, source_dir) for c in cams]
         # add appropriate tests to each cam
         for c in self.cams:
             for t in test_names:
