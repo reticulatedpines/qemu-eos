@@ -29,6 +29,12 @@ cd ../qemu-eos/magiclantern
 ./run_qemu.py --help
 ```
 
+If you make any changes to source in qemu-eos, from qemu-eos-build:
+
+```
+make -j16 && make plugins && cp tests/plugin/libmagiclantern.so arm-softmmu/plugins/
+```
+
 
 ## Inventory
 
