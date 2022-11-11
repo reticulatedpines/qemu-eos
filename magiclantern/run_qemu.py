@@ -59,15 +59,15 @@ def parse_args():
         rom_dir_default = os.path.join("..", "..", "roms")
         script_dir_default = os.path.join("..", "..", "magiclantern_simplified")
 
-    parser.add_argument("-q", "--qemu_build_dir",
+    parser.add_argument("-q", "--qemu-build-dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                               build_dir_default)),
                         help="build dir for ML Qemu, default: %(default)s")
-    parser.add_argument("-r", "--rom_dir",
+    parser.add_argument("-r", "--rom-dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                               rom_dir_default)),
                         help="location of roms, default: %(default)s")
-    parser.add_argument("-s", "--source_dir",
+    parser.add_argument("-s", "--source-dir",
                         default=os.path.realpath(os.path.join(script_dir,
                                                               script_dir_default)),
                         help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
@@ -75,7 +75,7 @@ def parse_args():
                         default=False,
                         help="attempt to run autoexec.bin from card (set cam bootflag), default: %(default)s",
                         action="store_true")
-    parser.add_argument("-d", "--d_args",
+    parser.add_argument("-d", "--d-args",
                         nargs="*",
                         default=[],
                         help="space separated list of qemu '-d' arguments.  See help for qemu for complete list")
