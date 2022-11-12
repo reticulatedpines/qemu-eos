@@ -5,13 +5,13 @@ import sys
 import argparse
 
 import ml_tests
-
+from ml_qemu.run import get_default_dirs
 
 def main():
     args = parse_args()
 
     suite = ml_tests.test_suite.TestSuite(cams=args.cams,
-                                          qemu_dir=args.qemu_dir,
+                                          qemu_dir=args.qemu_build_dir,
                                           rom_dir=args.rom_dir,
                                           source_dir=args.source_dir,
                                           test_output_dir=args.test_output_dir,
@@ -56,17 +56,18 @@ def parse_args():
                         help="Which cams to test, e.g. 50D 200D.  Defaults to all. "
                              "  Supported cams: %s" % supported_cams)
 
-    default_qemu_dir = os.path.realpath(os.path.join("..", "..", "qemu-eos-build"))
-    parser.add_argument("-q", "--qemu-dir",
+    default_dirs = get_default_dirs(os.getcwd())
+    default_qemu_dir = os.path.realpath(default_dirs["qemu-build-dir"])
+    parser.add_argument("-q", "--qemu-build-dir",
                         default=default_qemu_dir,
                         help="Location of dir holding qemu-eos install, default: %(default)s")
 
-    default_rom_dir = os.path.realpath(os.path.join("..", "..", "roms"))
+    default_rom_dir = os.path.realpath(default_dirs["rom-dir"])
     parser.add_argument("-r", "--rom-dir",
                         default=default_rom_dir,
                         help="Location of dir holding rom subdirs, default: %(default)s")
 
-    default_source_dir = os.path.realpath(os.path.join("..", "..", "magiclantern_simplified"))
+    default_source_dir = os.path.realpath(default_dirs["source-dir"])
     parser.add_argument("-s", "--source-dir",
                         default=default_source_dir,
                         help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
@@ -97,9 +98,9 @@ def parse_args():
     else:
         args.fail_early = True
 
-    if not os.path.isdir(args.qemu_dir):
-        print("FAIL: qemu_dir didn't exist / couldn't be "
-              "accessed: %s" % args.qemu_dir)
+    if not os.path.isdir(args.qemu_build_dir):
+        print("FAIL: qemu_build_dir didn't exist / couldn't be "
+              "accessed: %s" % args.qemu_build_dir)
         sys.exit(-1)
 
     if not os.path.isdir(args.rom_dir):

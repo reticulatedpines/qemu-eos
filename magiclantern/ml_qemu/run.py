@@ -13,6 +13,36 @@ class QemuRunnerError(Exception):
     pass
 
 
+def get_default_dirs(cwd):
+    """
+    Given the working directory of the process wanting
+    to obtain default ML dirs, return a dict:
+    "qemu-build-dir": "path/to/qemu-eos-build"
+    "rom-dir": "path/to/roms"
+    "source-dir": "path/to/magiclantern-source"
+    """
+    if not os.path.isdir(cwd):
+        raise QemuRunnerError("cwd wasn't a dir: %s" % cwd)
+
+    # There are two locations we are expecting to run from;
+    # 1) the repo location - qemu-eos/magiclantern/run_qemu.py
+    # 2) the extracted build from the zip - qemu-eos-build/run_qemu.py
+    #
+    # Here we try to detect these cases and provide appropriate defaults.
+    if os.path.split(os.getcwd())[1] == "qemu-eos-build":
+        build_dir = "."
+        rom_dir = os.path.join("..", "roms")
+        source_dir = os.path.join("..", "magiclantern_simplified")
+    else:
+        build_dir = os.path.join("..", "..", "qemu-eos-build")
+        rom_dir = os.path.join("..", "..", "roms")
+        source_dir = os.path.join("..", "..", "magiclantern_simplified")
+
+    return {"qemu-build-dir": build_dir,
+            "rom-dir": rom_dir,
+            "source-dir": source_dir}
+
+
 def get_debugmsg_addr(source_dir, cam):
     """
     Extract address for DryosDebugMsg from stubs.S file

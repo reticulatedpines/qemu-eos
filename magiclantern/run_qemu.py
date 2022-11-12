@@ -5,7 +5,7 @@ import argparse
 import subprocess
 import sys
 
-from ml_qemu.run import QemuRunner, QemuRunnerError
+from ml_qemu.run import QemuRunner, QemuRunnerError, get_default_dirs
 
 def main():
     args = parse_args()
@@ -28,7 +28,6 @@ def parse_args():
     Script to run Qemu with EOS support.
     """
 
-    script_dir = os.path.split(os.path.realpath(__file__))[0]
     parser = argparse.ArgumentParser(description=description)
 
     known_cams = ["1000D", "100D", "1100D", "1200D", "1300D",
@@ -45,31 +44,16 @@ def parse_args():
                         choices=known_cams,
                         help="Name of model to emulate, required")
 
-    # There are two common locations we may run this file from;
-    # 1) the repo location - qemu-eos/magiclantern/run_qemu.py
-    # 2) the extracted build from the zip - qemu-eos-build/run_qemu.py
-    #
-    # Here we try to detect these cases and provide appropriate defaults.
-    if os.path.split(os.getcwd())[1] == "qemu-eos-build":
-        build_dir_default = "."
-        rom_dir_default = os.path.join("..", "roms")
-        script_dir_default = os.path.join("..", "magiclantern_simplified")
-    else:
-        build_dir_default = os.path.join("..", "..", "qemu-eos-build")
-        rom_dir_default = os.path.join("..", "..", "roms")
-        script_dir_default = os.path.join("..", "..", "magiclantern_simplified")
+    default_dirs = get_default_dirs(os.getcwd())
 
     parser.add_argument("-q", "--qemu-build-dir",
-                        default=os.path.realpath(os.path.join(script_dir,
-                                                              build_dir_default)),
+                        default=os.path.realpath(default_dirs["qemu-build-dir"]),
                         help="build dir for ML Qemu, default: %(default)s")
     parser.add_argument("-r", "--rom-dir",
-                        default=os.path.realpath(os.path.join(script_dir,
-                                                              rom_dir_default)),
+                        default=os.path.realpath(default_dirs["rom-dir"]),
                         help="location of roms, default: %(default)s")
     parser.add_argument("-s", "--source-dir",
-                        default=os.path.realpath(os.path.join(script_dir,
-                                                              script_dir_default)),
+                        default=os.path.realpath(default_dirs["source-dir"]),
                         help="location of Magic Lantern repo, used to find stubs etc for emulation.  Default: %(default)s")
     parser.add_argument("--boot",
                         default=False,
