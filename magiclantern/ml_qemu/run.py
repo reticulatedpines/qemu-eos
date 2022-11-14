@@ -101,10 +101,8 @@ class QemuRunner:
                  boot=False,
                  d_args=[]):
         # TODO:
-        # handle QEMU_EOS_DEBUGMSG,
         # allow selecting drive images,
         # ensure Qemu test suite works in the same way with this vs run_canon_fw.sh,
-        # handle passing other args, e.g. -d romcpy
         # improve boot / non-boot selection (currently, -M CAM,firmware=boot=0, a better way
         #   would be creating a proper qemu option group)
         # check for arm-softmmu subdir and fail gracefully if missing,
