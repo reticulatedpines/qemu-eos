@@ -97,6 +97,7 @@ class QemuRunner:
                  cam,
                  monitor_socket_path="",
                  vnc_display="",
+                 gdb_port=0,
                  boot=False,
                  d_args=[]):
         # TODO:
@@ -140,6 +141,10 @@ class QemuRunner:
             self.vnc_client = vncdotool.api.connect(self.vnc_display)
         else:
             self.vnc_client = None
+
+        self.gdb_port = gdb_port
+        if gdb_port:
+            self.qemu_command.extend(["-S", "-gdb", "tcp::" + str(1234)])
 
         self.d_args = d_args
         if "debugmsg" in d_args:

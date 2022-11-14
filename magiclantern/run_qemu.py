@@ -10,9 +10,15 @@ from ml_qemu.run import QemuRunner, QemuRunnerError, get_default_dirs
 def main():
     args = parse_args()
 
+    gdb_port = 0
+    if args.gdb:
+        gdb_port = 1234
+
     try:
         with QemuRunner(args.qemu_build_dir, args.rom_dir, args.source_dir,
-                        args.model, boot=args.boot, d_args=args.d_args) as q:
+                        args.model,
+                        gdb_port=gdb_port,
+                        boot=args.boot, d_args=args.d_args) as q:
             q.qemu_process.wait()
             if q.qemu_process.returncode:
                 print("ERROR from qemu (bad -d option?).  Qemu output:")
@@ -59,6 +65,10 @@ def parse_args():
                         default=False,
                         help="attempt to run autoexec.bin from card (set cam bootflag), default: %(default)s",
                         action="store_true")
+    parser.add_argument("--gdb",
+                        default=False,
+                        action="store_true",
+                        help="start Qemu suspended, until gdb connects on port 1234")
     parser.add_argument("-d", "--d-args",
                         nargs="*",
                         default=[],
