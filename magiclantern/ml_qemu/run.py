@@ -43,17 +43,26 @@ def get_default_dirs(cwd):
             "source-dir": source_dir}
 
 
+def get_cam_path(source_dir, cam):
+    platform_path = os.path.join(source_dir, "platform")
+    platform_dirs = next(os.walk(platform_path))[1]
+
+    for d in platform_dirs:
+        if d.startswith(cam):
+            return os.path.join(platform_path, d)
+    return ""
+
+
 def get_debugmsg_addr(source_dir, cam):
     """
     Extract address for DryosDebugMsg from stubs.S file
     """
-    platform_path = os.path.join(source_dir, "platform")
-    platform_dirs = next(os.walk(platform_path))[1]
-
-    stubs_path = ""
-    for d in platform_dirs:
-        if d.startswith(cam):
-            stubs_path = os.path.join(platform_path, d, "stubs.S")
+    cam_path = get_cam_path(source_dir, cam)
+    if cam_path:
+        stubs_path = os.path.join(cam_path, "stubs.S")
+    else:
+        print("WARNING: no cam path found for cam: %s" % cam)
+        return ""
 
     # we expect lines to look something like this:
     # NSTUB(    0x395c,  DryosDebugMsg) // 0xFFA50C3C - RAM_OFFSET
