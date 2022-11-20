@@ -5,7 +5,7 @@ import os
 import hashlib
 from time import sleep
 
-from ml_qemu.run import QemuRunner
+from ml_qemu.run import QemuRunner, get_cam_path
 
 class TestError(Exception):
     pass
@@ -32,6 +32,12 @@ class Test(ABC):
     """
     def __init__(self, cam, qemu_dir, test_dir, job_ID=0):
         self.cam = cam
+
+        # get default disk image paths, individual tests may override these
+        cam_path = get_cam_path(cam.source_dir, cam.model)
+        self.sd_file = os.path.join(cam_path, "sd.qcow2")
+        self.cf_file = os.path.join(cam_path, "cf.qcow2")
+
         self.qemu_dir = qemu_dir
         self.job_ID = job_ID
         self.gdb_port = 1234 + job_ID
@@ -99,6 +105,7 @@ class MenuTest(Test):
         # invoke qemu and control it to run the test
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
                         self.cam.model,
+                        sd_file=self.sd_file, cf_file=self.cf_file,
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display) as q:
             q.screen_cap_prefix = "menu_test_"

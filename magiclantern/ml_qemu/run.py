@@ -104,6 +104,7 @@ class QemuRunner:
     """
     def __init__(self, build_dir, rom_dir, source_dir,
                  cam,
+                 sd_file="", cf_file="",
                  monitor_socket_path="",
                  vnc_display="",
                  gdb_port=0,
@@ -132,10 +133,8 @@ class QemuRunner:
             model = cam + ",firmware=boot=0"
 
         self.qemu_command = [os.path.join(build_dir, "arm-softmmu", "qemu-system-arm"),
-                             "-drive", "if=sd,file=" +
-                                     os.path.join(build_dir, "disk_images", "sd.qcow2"),
-                             "-drive", "if=ide,file=" +
-                                     os.path.join(build_dir, "disk_images", "cf.qcow2"),
+                             "-drive", "if=sd,file=" + sd_file,
+                             "-drive", "if=ide,file=" + cf_file,
                              "-chardev", "socket,server,nowait,path=" + self.monitor_socket_path + ",id=monsock",
                              "-mon", "chardev=monsock,mode=readline",
                              "-name", cam,

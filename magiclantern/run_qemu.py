@@ -5,7 +5,7 @@ import argparse
 import subprocess
 import sys
 
-from ml_qemu.run import QemuRunner, QemuRunnerError, get_default_dirs
+from ml_qemu.run import QemuRunner, QemuRunnerError, get_default_dirs, get_cam_path
 
 def main():
     args = parse_args()
@@ -14,9 +14,23 @@ def main():
     if args.gdb:
         gdb_port = 1234
 
+    # attempt to find disk images in platform dir for the cam
+    source_dir = args.source_dir
+    cam = args.model
+    cam_path = get_cam_path(source_dir, cam)
+    sd_file = os.path.join(cam_path, "sd.qcow2")
+    cf_file = os.path.join(cam_path, "cf.qcow2")
+    if not os.path.isfile(sd_file):
+        print("Couldn't find SD image file: %s" % sd_file)
+        if not os.path.isfile(cf_file):
+            print("Couldn't find CF image file: %s" % cf_file)
+        print("You may want to run 'make sd.qcow2' in the cam dir")
+        sys.exit(-1)
+
     try:
-        with QemuRunner(args.qemu_build_dir, args.rom_dir, args.source_dir,
-                        args.model,
+        with QemuRunner(args.qemu_build_dir, args.rom_dir, source_dir,
+                        cam,
+                        sd_file=sd_file, cf_file=cf_file,
                         gdb_port=gdb_port,
                         boot=args.boot, d_args=args.d_args) as q:
             q.qemu_process.wait()
