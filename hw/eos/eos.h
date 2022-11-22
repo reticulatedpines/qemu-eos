@@ -178,7 +178,7 @@ typedef enum
 struct mpu_init_spell
 {
   uint16_t in_spell[128];
-  uint16_t out_spells[256][128];
+  uint16_t out_spells[256][256];
   const char *description;
 };
 
@@ -188,7 +188,7 @@ typedef struct
     int sending;
     int receiving;
     
-    uint16_t recv_buffer[128];
+    uint16_t recv_buffer[256];
     int recv_index;
     
     /* used for replaying MPU messages */
