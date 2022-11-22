@@ -2302,6 +2302,28 @@ unsigned int eos_trigger_int(unsigned int id, unsigned int delay)
 {
     assert(id);
 
+    usleep(250);
+    // This sleep prevents interrupt handlers triggering resource
+    // starvation of other qemu threads, should the handler trigger
+    // its own interrupt.
+    //
+    // Without this, on qemu 4, MPU SIO3 interrupt handling
+    // slows to a crawl.  Qemu 2 is okay.
+    // I'm not sure on the root cause, but qemu did change their iothread
+    // and cpu thread to work simultaneously around this period, so that's
+    // plausible.
+    //
+    // Value found via experimentation on one system only, no idea
+    // if it's sane for different hosts.  Lower values, for me, trigger
+    // repeated "[MPU] Request more data, index: 0x0", for many seconds per
+    // MPU message, or sometimes hanging indefinitely.  These are still
+    // seen but in much lower numbers now (needs -d mpu).  Qemu 2 had
+    // almost none.
+    //
+    // SJE TODO this doesn't feel a very "qemu" way to solve the problem.
+    // Notably they don't use usleep anywhere.  Maybe some pthread function
+    // would be better?  Maybe later Qemu solves this for us?
+
     if(!delay && eos_state->irq_enabled[id] && !eos_state->irq_id)
     {
         if (qemu_loglevel_mask(CPU_LOG_INT)) {
