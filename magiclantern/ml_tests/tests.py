@@ -105,13 +105,13 @@ class MenuTest(Test):
         # invoke qemu and control it to run the test
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
                         self.cam.model,
+                        unreliable_screencaps=self.cam.unreliable_screencaps,
                         sd_file=self.sd_file, cf_file=self.cf_file,
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display) as q:
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
                 capture_filename = q.key_press(k)
-                # TODO check screen matches expected, raise if not
                 capture_filepath = os.path.join(self.output_dir, capture_filename)
                 with open(capture_filepath, "rb") as f:
                     test_hash = hashlib.md5(f.read()).hexdigest()

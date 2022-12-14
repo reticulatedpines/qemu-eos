@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import argparse
 import subprocess
 from time import sleep
 import socket
+import hashlib
 
 import vncdotool
 from vncdotool import api
@@ -104,6 +106,7 @@ class QemuRunner:
     """
     def __init__(self, build_dir, rom_dir, source_dir,
                  cam,
+                 unreliable_screencaps=False,
                  sd_file="", cf_file="",
                  monitor_socket_path="",
                  vnc_display="",
@@ -131,6 +134,9 @@ class QemuRunner:
             model = cam + ",firmware=boot=1"
         else:
             model = cam + ",firmware=boot=0"
+
+        # Some cams have glitchy displays which we must work around
+        self.unreliable_screencaps = unreliable_screencaps
 
         self.qemu_command = [os.path.join(build_dir, "arm-softmmu", "qemu-system-arm"),
                              "-drive", "if=sd,file=" + sd_file,
@@ -224,7 +230,36 @@ class QemuRunner:
         n = self.screen_cap_counter
         self.screen_cap_counter += 1
         capture_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
-        self.vnc_client.captureScreen(capture_name)
+
+        if self.unreliable_screencaps:
+            # take screencaps until two match, or we hit the max
+            max_attempts = 5
+            screencap_hashes = []
+            match_found = False
+            for i in range(max_attempts):
+                name = str(i) + capture_name
+                self.vnc_client.captureScreen(name)
+                sleep(0.2) # too fast and we can capture the same glitchy screen and false match
+                with open(name, "rb") as f:
+                    md5 = hashlib.md5(f.read()).hexdigest()
+                    if md5 in screencap_hashes:
+                        # found a match, keep it, delete others
+                        match_found = True
+                        break
+                    else:
+                        screencap_hashes.append(md5)
+            # The last capture will either be a match,
+            # or there were no matches.  Make it have the "real" name,
+            # comparison occurs against this file.
+            shutil.copy(name, capture_name)
+
+            # delete temp files if we have a match,
+            # otherwise keep for inspection
+            if match_found:
+                for j in range(i + 1):
+                    os.remove(str(j) + capture_name)
+        else:
+            self.vnc_client.captureScreen(capture_name)
         sleep(0.1)
         return capture_name
 
