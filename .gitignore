@@ -103,6 +103,7 @@ magiclantern/test_output
 *.gcda
 *.gcno
 *.gcov
+*.qcow2
 /pc-bios/bios-pq/status
 /pc-bios/edk2-*.fd
 /pc-bios/vgabios-pq/status

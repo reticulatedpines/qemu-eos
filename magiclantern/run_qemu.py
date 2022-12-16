@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import argparse
 import subprocess
 import sys
@@ -14,18 +15,46 @@ def main():
     if args.gdb:
         gdb_port = 1234
 
-    # attempt to find disk images in platform dir for the cam
     source_dir = args.source_dir
     cam = args.model
     cam_path = get_cam_path(source_dir, cam)
-    sd_file = os.path.join(cam_path, "sd.qcow2")
-    cf_file = os.path.join(cam_path, "cf.qcow2")
-    if not os.path.isfile(sd_file):
-        print("Couldn't find SD image file: %s" % sd_file)
-        if not os.path.isfile(cf_file):
-            print("Couldn't find CF image file: %s" % cf_file)
-        print("You may want to run 'make sd.qcow2' in the cam dir")
-        sys.exit(-1)
+
+    if args.boot:
+        # If we're trying to boot from card, we probably want to use
+        # ML for the cam in question, so, attempt to find disk images
+        # in platform dir for the cam.
+        #
+        # TODO have some way of overriding this
+        sd_file = os.path.join(cam_path, "sd.qcow2")
+        cf_file = os.path.join(cam_path, "cf.qcow2")
+        if not os.path.isfile(sd_file):
+            print("Couldn't find SD image file: %s" % sd_file)
+            if not os.path.isfile(cf_file):
+                print("Couldn't find CF image file: %s" % cf_file)
+            print("You may want to run 'make sd.qcow2' in the cam dir")
+            sys.exit(-1)
+    else:
+        # use the default disk image, unzip it first if needed
+        disk_images_path = os.path.join(".", "disk_images")
+        xz_image = os.path.join(disk_images_path, "sd.qcow2.xz")
+        xz_command = shutil.which("xz")
+        if not os.path.isfile(xz_image):
+            print("Couldn't find sd.qcow2.xz, tried: %s" % xz_image)
+            sys.exit(-1)
+        if not xz_command:
+            print("No 'xz' in path, can't extract default disk image")
+            sys.exit(-1)
+
+        if not os.path.isfile(os.path.join(disk_images_path, "sd.qcow2")):
+            # auto extract on first run
+            for p in ["sd2.qcow2.xz", "cf.qcow2.xz"]:
+                dst = os.path.join(disk_images_path, p)
+                shutil.copy(xz_image, dst)
+                subprocess.run([xz_command, "-d", dst])
+            shutil.move(os.path.join(disk_images_path, "sd2.qcow2"),
+                        os.path.join(disk_images_path, "sd.qcow2"))
+        sd_file = os.path.join(disk_images_path, "sd.qcow2")
+        cf_file = os.path.join(disk_images_path, "cf.qcow2")
 
     try:
         with QemuRunner(args.qemu_build_dir, args.rom_dir, source_dir,
@@ -35,9 +64,15 @@ def main():
                         boot=args.boot, d_args=args.d_args) as q:
             q.qemu_process.wait()
             if q.qemu_process.returncode:
-                print("ERROR from qemu (bad -d option?).  Qemu output:")
-                for line in q.qemu_process.stdout:
-                    print(line.decode("utf8").rstrip())
+                print("ERROR from qemu (bad -d option?)")
+                print("stdout: ")
+                if q.qemu_process.stdout:
+                    for line in q.qemu_process.stdout:
+                        print(line.decode("utf8").rstrip())
+                print("stderr: ")
+                if q.qemu_process.stderr:
+                    for line in q.qemu_process.stderr:
+                        print(line.decode("utf8").rstrip())
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
         sys.exit(-1)
