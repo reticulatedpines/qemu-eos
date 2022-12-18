@@ -193,6 +193,7 @@ struct eos_model_desc eos_model_list[] = {
     {
         .name                   = MODEL_NAME_60D,
         .digic_version          = 4,
+        .rom0_size              = 0x01000000,   //
         .ram_size               = 0x20000000,   /* 512MB */
         .current_task_addr      = 0x1A2C,
         .rtc_time_correct       = 0x8D,
