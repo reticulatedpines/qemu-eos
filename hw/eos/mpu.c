@@ -771,8 +771,6 @@ static int translate_scancode_2(int scancode, int first_code, int allow_auto_rep
         return -1;
     }
 
-    printf(" ==== scancode: %08x\n", scancode);
-    
     int code = (first_code << 8) | scancode;
 
     if (code == 0x003B)
