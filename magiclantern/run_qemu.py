@@ -31,7 +31,7 @@ def main():
             print("Couldn't find SD image file: %s" % sd_file)
             if not os.path.isfile(cf_file):
                 print("Couldn't find CF image file: %s" % cf_file)
-            print("You may want to run 'make sd.qcow2' in the cam dir")
+            print("You may want to run 'make disk_image' in the cam dir")
             sys.exit(-1)
     else:
         # use the default disk image, unzip it first if needed
