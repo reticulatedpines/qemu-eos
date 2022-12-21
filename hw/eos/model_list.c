@@ -250,7 +250,7 @@ struct eos_model_desc eos_model_list[] = {
     {
         .name                   = MODEL_NAME_A1100,
         .digic_version          = 4,
-        .rom0_size              = 0x400000,     /* fixme: unknown */
+        .rom0_size              = 0x0,     /* A1100 has only one ROM */
         .rom1_size              = 0x400000,     /* 4MB */
         .ram_size               = 0x04000000,   /* only 64M */
         .btcm_addr              = 0x80000000,
