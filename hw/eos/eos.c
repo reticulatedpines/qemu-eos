@@ -1863,6 +1863,25 @@ static void patch_EOSM5(void)
     MEM_WRITE_ROM(0xE115CF88+0x98, (uint8_t*) &one, 4);
 }
 
+/* patches are for firmware 100c, 100b should be compatible, uses identical CHDK build */
+static void patch_A1100(void)
+{
+    /* avoid immediate shutdown from temperature check at ffc104fc
+     * better fix would be to return sane ADC values for the MMIO
+     */
+    fprintf(stderr, "Patching 0xFFC10504 (temp check)\n");
+    uint32_t nop = 0xe1a00000; // NOP 00 00 a0 e1;
+    MEM_WRITE_ROM(0xFFC10504, (uint8_t*) &nop, 4);
+
+    /*
+    // trigger ROMSTARTER DISKBOOT etc checks
+    fprintf(stderr, "Patching 0xffff0750 (uart loopback)\n");
+    uint32_t nop = 0xe1a00000; // NOP 00 00 a0 e1;
+    MEM_WRITE_ROM(0xffff0750, (uint8_t*) &nop, 4);
+    */
+}
+
+
 static void eos_init_common(void)
 {
     eos_init_cpu();
@@ -1961,6 +1980,11 @@ static void eos_init_common(void)
     if (strcmp(eos_state->model->name, MODEL_NAME_EOSM5) == 0)
     {
         patch_EOSM5();
+    }
+
+    if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0)
+    {
+        patch_A1100();
     }
 
     if (eos_state->model->digic_version == 6)
