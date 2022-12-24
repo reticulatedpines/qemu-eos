@@ -16,7 +16,9 @@ def main():
                                           source_dir=args.source_dir,
                                           test_output_dir=args.test_output_dir,
                                           test_names=args.tests,
-                                          fail_early=args.fail_early)
+                                          fail_early=args.fail_early,
+                                          verbose=args.verbose
+                                          )
 
     # A test suite holds cams, each cam holds the
     # tests that are valid for itself.  The suite object
@@ -24,8 +26,9 @@ def main():
     # suite doesn't start the tests, it configures them,
     # checks validity etc.
 
-    for c in suite.cams:
-        print(c)
+    if args.verbose:
+        for c in suite.cams:
+            print(c)
 
     try:
         suite.run_tests()
@@ -90,6 +93,11 @@ def parse_args():
                         default=False,
                         help="Override the default of failing all testing "
                              "at the first test that fails")
+
+    parser.add_argument("--verbose",
+                        action="store_true",
+                        default=False,
+                        help="Be spammier.  This includes Qemu output.")
 
     args = parser.parse_args()
 

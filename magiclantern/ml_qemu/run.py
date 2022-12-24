@@ -110,6 +110,7 @@ class QemuRunner:
                  sd_file="", cf_file="",
                  monitor_socket_path="",
                  vnc_display="",
+                 verbose=False,
                  gdb_port=0,
                  boot=False,
                  d_args=[]):
@@ -134,6 +135,8 @@ class QemuRunner:
             model = cam + ",firmware=boot=1"
         else:
             model = cam + ",firmware=boot=0"
+
+        self.verbose = verbose
 
         # Some cams have glitchy displays which we must work around
         self.unreliable_screencaps = unreliable_screencaps
@@ -177,11 +180,13 @@ class QemuRunner:
         # manager, I suspect it doesn't.  Fix as appropriate, or make
         # failure explicit outside that usage?
         qemu_env["QEMU_EOS_WORKDIR"] = self.rom_dir
-        print(self.qemu_command)
+        kwargs = {"env":qemu_env,
+                  "stdin":subprocess.PIPE}
+        if not self.verbose:
+            kwargs["stdout"] = subprocess.PIPE
+            kwargs["stderr"] = subprocess.PIPE
         self.qemu_process = subprocess.Popen(self.qemu_command,
-                                             env=qemu_env,
-                                             stdin=subprocess.PIPE,
-                                             stdout=subprocess.PIPE)
+                                             **kwargs)
         # TODO: bit hackish, but we give some time for Qemu
         # to start.  This prevents problems with VNC access
         # happening before Qemu is up.  There should be a more

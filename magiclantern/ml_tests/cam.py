@@ -42,22 +42,6 @@ class Cam(object):
         if not os.path.isdir(rom_subdir):
             raise CamError("Rom subdir didn't exist: %s" % rom_subdir)
         
-        # find rom(s)
-        # TODO handle cams that only have 1 rom, also SFDATA
-        rom0_path = os.path.join(rom_subdir, "ROM0.BIN")
-        if not os.path.isfile(rom0_path):
-            raise CamError("Couldn't find ROM0: %s" % rom0_path)
-        self.rom0_path = rom0_path
-        with open(rom0_path, "rb") as f:
-            self.rom0_md5 = hashlib.md5(f.read()).hexdigest()
-
-        rom1_path = os.path.join(rom_subdir, "ROM1.BIN")
-        if not os.path.isfile(rom1_path):
-            raise CamError("Couldn't find ROM1: %s" % rom1_path)
-        self.rom1_path = rom1_path
-        with open(rom1_path, "rb") as f:
-            self.rom1_md5 = hashlib.md5(f.read()).hexdigest()
-
         # Some cams don't buffer cleanly (is this a DryOS or Qemu problem?)
         # and screen caps can be unreliable, with tearing or other artifacts.
         # We must compensate later on.
@@ -85,13 +69,30 @@ class Cam(object):
         else:
             raise CamError("Fix laziness: mapping cam name to Digic version")
 
+        # find rom(s)
+        # TODO handle SFDATA
+        if self.digic_version == 6:
+            rom0_path = None # these cams only have rom1
+        else:
+            rom0_path = os.path.join(rom_subdir, "ROM0.BIN")
+            if not os.path.isfile(rom0_path):
+                raise CamError("Couldn't find ROM0: %s" % rom0_path)
+            self.rom0_path = rom0_path
+            with open(rom0_path, "rb") as f:
+                self.rom0_md5 = hashlib.md5(f.read()).hexdigest()
+
+        rom1_path = os.path.join(rom_subdir, "ROM1.BIN")
+        if not os.path.isfile(rom1_path):
+            raise CamError("Couldn't find ROM1: %s" % rom1_path)
+        self.rom1_path = rom1_path
+        with open(rom1_path, "rb") as f:
+            self.rom1_md5 = hashlib.md5(f.read()).hexdigest()
+
         # choose which is code rom
-        if self.digic_version in [4, 5]:
+        if self.digic_version in [4, 5, 6]:
             self.code_rom_md5 = self.rom1_md5
         elif self.digic_version in [7, 8, 10]:
             self.code_rom_md5 = self.rom0_md5
-        else:
-            raise CamError("Fix laziness: which rom is code rom for D6?")
 
         # set camera traits
         self.model = cam
@@ -104,12 +105,16 @@ class Cam(object):
         if self.is_powershot and self.is_eos:
             raise CamError("Cam shouldn't be Powershot and EOS! : %s" % cam)
 
-        self.tests = []
+        self.tests = [] # A TestSuite will initialise this with valid tests
 
     def run_tests(self):
         for test in self.tests:
             with test as t:
-                t.run()
+                if not t.run():
+                    if t.verbose:
+                        print(self.model + " FAIL: " + t.fail_reason)
+                    return False # FIXME handle fail_early behaviour
+        return True
 
     def __repr__(self):
         s = "Model: %s\n" % self.model

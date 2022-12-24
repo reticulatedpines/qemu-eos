@@ -5,7 +5,7 @@ import sys
 import time
 
 from . import test_group_names
-from .cam import Cam
+from .cam import Cam, CamError
 from . import tests
 
 class TestSuiteError(Exception):
@@ -29,7 +29,8 @@ class TestSuite(object):
                  source_dir="",
                  test_output_dir="",
                  test_names=[],
-                 fail_early=True
+                 fail_early=True,
+                 verbose=False
                 ):
         # fail_early controls abort strategy.  We default to any failing
         # test aborting the job.
@@ -79,31 +80,85 @@ class TestSuite(object):
             os.mkdir(test_output_sub_dir)
         self.test_output_dir = test_output_sub_dir
 
-        self.cams = [Cam(c, rom_dir, source_dir) for c in cams]
+        self.cams = []
+        for c in cams:
+            try:
+                self.cams.append(Cam(c, rom_dir, source_dir))
+            except CamError as e:
+                print("FAIL: %s" % c)
+                print("      %s" % e)
+
         # add appropriate tests to each cam
         for c in self.cams:
             for t in test_names:
                 if t not in test_group_names:
                     raise TestSuiteError("Unexpected test name: %s" % t)
                 if t == "menu" and c.can_emulate_gui:
-                    c.tests.append(tests.MenuTest(c, qemu_dir, self.test_output_dir))
+                    c.tests.append(tests.MenuTest(c, qemu_dir,
+                                                  self.test_output_dir,
+                                                  verbose=verbose))
 
             if not c.tests:
-                print ("WARNING: Cam has no valid tests to run: %s" % c.model)
+                print ("WARN: Cam has no valid tests to run: %s" % c.model)
 
         # TODO we want to check if each cam ran and passed
         # all the tests it should (from the requested set)
 
     def run_tests(self):
         for c in self.cams:
-            try:
-                c.run_tests()
-            except tests.TestFailError as e:
-                print(e)
-                if self.fail_early: # if any test fails, immediately end all testing
-                    sys.exit(-1)
-                else: # run all tests, report failures at the end
-                    pass
+            print("INFO: starting %s tests" % c.model)
+
+            # fail if any of these are true:
+            #   run_tests() reports failure
+            #   the cam had no tests
+            #   any test is in a failed state
+            #   any test is not in a passed state
+            #   any test has a fail_reason
+
+            result = c.run_tests()
+            failed_tests = [t for t in c.tests if t.passed == False]
+            unpassed_tests = [t for t in c.tests if t.passed != True]
+            fail_reason_tests = [t for t in c.tests if t.fail_reason]
+
+            if not result:
+                # at least one test failed
+                print("FAIL: %s" % c.model)
+                for t in [t for t in c.tests if not t.passed]:
+                    test_name = t.__class__.__name__
+                    print("      %s" % t.fail_reason)
+            elif not c.tests:
+                # no tests were defined, fail but don't raise
+                print("FAIL: %s" % c.model)
+                print("      No tests defined for this cam")
+            elif failed_tests:
+                # shouldn't happen, the first case should catch this
+                print("ERR : badly detected failure")
+                print("FAIL: %s" % c.model)
+                for t in failed_tests:
+                    test_name = t.__class__.__name__
+                    print("      %s" % t.fail_reason)
+                raise TestSuiteError("badly detected failure, failed tests")
+            elif unpassed_tests:
+                # shouldn't happen, the first case should catch this
+                print("ERR : badly detected failure")
+                print("FAIL: %s" % c.model)
+                for t in unpassed_tests:
+                    test_name = t.__class__.__name__
+                    print("      %s" % t.fail_reason)
+                    print("      passed: %s" % t.passed)
+                    print("      passed type: %s" % type(t.passed))
+                raise TestSuiteError("badly detected failure, unpassed test")
+            elif fail_reason_tests:
+                # shouldn't happen, the first case should catch this
+                print("ERR : badly detected failure")
+                print("FAIL: %s" % c.model)
+                for t in fail_reason_tests:
+                    test_name = t.__class__.__name__
+                    print("      fail reason: %s" % t.fail_reason)
+                    print("      fail reason type: %s" % type(t.fail_reason))
+                raise TestSuiteError("badly detected failure, fail reason tests")
+            else:
+                print("PASS: %s" % c.model)
 
     def __enter__(self):
         os.chdir(self.test_output_dir)

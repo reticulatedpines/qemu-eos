@@ -11,14 +11,6 @@ class TestError(Exception):
     pass
 
 
-class TestFailError(Exception):
-    """
-    Raised when a test fails, for signalling to
-    the enclosing TestSuite
-    """
-    pass
-
-
 class Test(ABC):
     """
     All tests share some methods and properties,
@@ -30,7 +22,8 @@ class Test(ABC):
     and restoring directory state when the test ends.
     Should be used via "with".
     """
-    def __init__(self, cam, qemu_dir, test_dir, job_ID=0):
+    def __init__(self, cam, qemu_dir, test_dir, job_ID=0,
+                 verbose=False):
         self.cam = cam
 
         # get default disk image paths, individual tests may override these
@@ -39,6 +32,8 @@ class Test(ABC):
         self.cf_file = os.path.join(cam_path, "cf.qcow2")
 
         self.qemu_dir = qemu_dir
+        self.qemu_runner = None
+        self.verbose = verbose
         self.job_ID = job_ID
         self.gdb_port = 1234 + job_ID
         self.vnc_port = 12345 + job_ID
@@ -50,9 +45,21 @@ class Test(ABC):
                                                 "expected_test_output",
                                                 self.cam.model,
                                                 self.__class__.__name__)
+        self.passed = False
+        self.fail_reason = None
 
     def run(self):
         pass
+
+    def return_failure(self, reason):
+        self.passed = False
+        self.fail_reason = reason
+        self.qemu_runner.shutdown()
+        return False
+
+    def return_success(self):
+        self.passed = True
+        return True
 
     def __enter__(self):
         path_parts = [self.output_top_dir,
@@ -89,18 +96,23 @@ class MenuTest(Test):
                  "right", "right", "right", "right", "right", # cycle through all menus
                  "up", "up", "space", "down", "space", # check sub-menus work, turn beep off
                  "right", "up", "up", "space", "pgdn", "space", # check wheel controls using Expo Comp sub-menu
+                ],
+                "d266ce304585952fb3a05a9f6c304f2f": # 60D ROM1
+                ["m",
                 ]
                 }
 
     def run(self):
-        print("MenuTest starting on %s %s" % 
-              (self.cam.model, self.cam.code_rom_md5))
+        if self.verbose:
+            print("MenuTest starting on %s %s" %
+                  (self.cam.model, self.cam.code_rom_md5))
 
-        try:
-            key_sequence = self.qemu_key_sequences[self.cam.code_rom_md5]
-        except KeyError:
-            raise TestError("Unknown rom with MD5 sum: %s" % 
-                            self.cam.code_rom_md5)
+        if self.cam.code_rom_md5 not in self.qemu_key_sequences:
+            self.fail_reason = "Unknown rom with MD5 sum: %s" % self.cam.code_rom_md5
+            self.passed = False
+            return
+
+        key_sequence = self.qemu_key_sequences[self.cam.code_rom_md5]
 
         # invoke qemu and control it to run the test
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
@@ -108,23 +120,30 @@ class MenuTest(Test):
                         unreliable_screencaps=self.cam.unreliable_screencaps,
                         sd_file=self.sd_file, cf_file=self.cf_file,
                         monitor_socket_path=self.qemu_monitor_path,
-                        vnc_display=self.vnc_display) as q:
+                        vnc_display=self.vnc_display,
+                        verbose=self.verbose) as self.qemu_runner:
+            q = self.qemu_runner
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
                 capture_filename = q.key_press(k)
                 capture_filepath = os.path.join(self.output_dir, capture_filename)
                 with open(capture_filepath, "rb") as f:
                     test_hash = hashlib.md5(f.read()).hexdigest()
-                with open(os.path.join(self.expected_output_dir, capture_filename), "rb") as f:
-                    expected_hash = hashlib.md5(f.read()).hexdigest()
+                try:
+                    expected_output_path = os.path.join(self.expected_output_dir,
+                                                        capture_filename)
+                    with open(expected_output_path, "rb") as f:
+                        expected_hash = hashlib.md5(f.read()).hexdigest()
+                except FileNotFoundError:
+                    return self.return_failure("Missing expected output file: %s"
+                                               % expected_output_path)
                 if test_hash != expected_hash:
-                    # attempt clean shutdown via Qemu monitor socket
-                    q.shutdown()
-                    raise TestFailError("FAIL: mismatched hash for file '%s', expected %s, got %s"
-                                        % (capture_filename, expected_hash, test_hash))
+                    return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
+                                               % capture_filename, expected_hash, test_hash)
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
-        print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        #print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        return self.return_success()
 
 

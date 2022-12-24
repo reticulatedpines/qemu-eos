@@ -59,20 +59,13 @@ def main():
     try:
         with QemuRunner(args.qemu_build_dir, args.rom_dir, source_dir,
                         cam,
+                        verbose=True,
                         sd_file=sd_file, cf_file=cf_file,
                         gdb_port=gdb_port,
                         boot=args.boot, d_args=args.d_args) as q:
             q.qemu_process.wait()
             if q.qemu_process.returncode:
                 print("ERROR from qemu (bad -d option?)")
-                print("stdout: ")
-                if q.qemu_process.stdout:
-                    for line in q.qemu_process.stdout:
-                        print(line.decode("utf8").rstrip())
-                print("stderr: ")
-                if q.qemu_process.stderr:
-                    for line in q.qemu_process.stderr:
-                        print(line.decode("utf8").rstrip())
     except QemuRunnerError as e:
         print("ERROR: " + str(e))
         sys.exit(-1)
