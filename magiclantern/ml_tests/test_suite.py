@@ -99,10 +99,7 @@ class TestSuite(object):
                                                   verbose=verbose))
 
             if not c.tests:
-                print ("WARN: Cam has no valid tests to run: %s" % c.model)
-
-        # TODO we want to check if each cam ran and passed
-        # all the tests it should (from the requested set)
+                print("WARN: Cam has no valid tests to run: %s" % c.model)
 
     def run_tests(self):
         for c in self.cams:

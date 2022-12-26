@@ -22,6 +22,13 @@ class Test(ABC):
     and restoring directory state when the test ends.
     Should be used via "with".
     """
+
+    # Map cams for which we have tests, to code ROM MD5s.
+    # It's a list of ROMs so we can support different ROM
+    # dumps if required.
+    known_cams = {"50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
+                  "60D": ["d266ce304585952fb3a05a9f6c304f2f"]}
+
     def __init__(self, cam, qemu_dir, test_dir, job_ID=0,
                  verbose=False):
         self.cam = cam
@@ -54,7 +61,8 @@ class Test(ABC):
     def return_failure(self, reason):
         self.passed = False
         self.fail_reason = reason
-        self.qemu_runner.shutdown()
+        if self.qemu_runner:
+            self.qemu_runner.shutdown()
         return False
 
     def return_success(self):
@@ -90,6 +98,7 @@ class MenuTest(Test):
     # If you have a new ROM, you'll need to determine a new sequence
     # (if you're lucky, an existing rom will be close and can be
     # adapted).
+
     qemu_key_sequences = {
                 "424545a5cfe10b1a5d8cefffe9fe5297": # 50D ROM1
                 ["m", "l", "l", "m", "right", "right", "right", "right",
@@ -107,10 +116,17 @@ class MenuTest(Test):
             print("MenuTest starting on %s %s" %
                   (self.cam.model, self.cam.code_rom_md5))
 
+        if self.cam.model not in self.known_cams:
+            return self.return_failure("No tests known for cam: %s"
+                                       % self.cam.model)
+
+        if self.cam.code_rom_md5 not in self.known_cams[self.cam.model]:
+            return self.return_failure("Unknown rom for cam, MD5 sum: %s"
+                                       % self.cam.code_rom_md5)
+
         if self.cam.code_rom_md5 not in self.qemu_key_sequences:
-            self.fail_reason = "Unknown rom with MD5 sum: %s" % self.cam.code_rom_md5
-            self.passed = False
-            return
+            return self.return_failure("Unknown rom for MenuTest, MD5 sum: %s"
+                                       % self.cam.code_rom_md5)
 
         key_sequence = self.qemu_key_sequences[self.cam.code_rom_md5]
 
@@ -139,7 +155,7 @@ class MenuTest(Test):
                                                % expected_output_path)
                 if test_hash != expected_hash:
                     return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
-                                               % capture_filename, expected_hash, test_hash)
+                                               % (capture_filename, expected_hash, test_hash))
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
