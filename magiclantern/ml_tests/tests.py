@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from abc import ABC
+import abc
 import os
 import hashlib
 from time import sleep
@@ -11,7 +11,7 @@ class TestError(Exception):
     pass
 
 
-class Test(ABC):
+class Test(abc.ABC):
     """
     All tests share some methods and properties,
     giving a common interface.
@@ -55,6 +55,7 @@ class Test(ABC):
         self.passed = False
         self.fail_reason = None
 
+    @abc.abstractmethod
     def run(self):
         pass
 
