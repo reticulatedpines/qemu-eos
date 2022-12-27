@@ -17,7 +17,7 @@ Create a new directory, qemu-eos-build, also at the same level, and build qemu-e
 ```
 mkdir qemu-eos-build
 cd qemu-eos-build
-../qemu-eos/configure --target-list=arm-softmmu --enable-plugins --disable-docs --enable-vnc --enable-gtk
+../qemu-eos/configure --target-list=arm-softmmu --enable-plugins --disable-docs --enable-vnc --enable-gtk --disable-vte
 make -j16
 make plugins
 cp tests/plugin/libmagiclantern.so arm-softmmu/plugins/
