@@ -183,15 +183,15 @@ class QemuRunner:
         kwargs = {"env":qemu_env,
                   "stdin":subprocess.PIPE}
         if not self.verbose:
-            kwargs["stdout"] = subprocess.PIPE
-            kwargs["stderr"] = subprocess.PIPE
+            kwargs["stdout"] = subprocess.DEVNULL
+            kwargs["stderr"] = subprocess.DEVNULL
         self.qemu_process = subprocess.Popen(self.qemu_command,
                                              **kwargs)
         # TODO: bit hackish, but we give some time for Qemu
         # to start.  This prevents problems with VNC access
         # happening before Qemu is up.  There should be a more
         # graceful way.  Check status via monitor socket possibly?
-        sleep(1.5)
+        sleep(5.5)
         return self
 
     def __exit__(self, *args):
@@ -231,7 +231,7 @@ class QemuRunner:
         """
         Capture VM screen via VNC.
         """
-        sleep(0.1)
+        sleep(0.3)
         n = self.screen_cap_counter
         self.screen_cap_counter += 1
         capture_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"

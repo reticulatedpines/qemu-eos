@@ -108,7 +108,10 @@ class MenuTest(Test):
                  "right", "up", "up", "space", "pgdn", "space", # check wheel controls using Expo Comp sub-menu
                 ],
                 "d266ce304585952fb3a05a9f6c304f2f": # 60D ROM1
-                ["m",
+                ["m", "l", "l", "m", "left", "left", "left", "left",
+                 "left", "left", "left", "left", "left", "left", "left", # cycle through all menus
+                 "up", "up", "space", "down", "space", # check sub-menus work; change auto rotation
+                 "left", "up", "up", "space", "pgup", "space", # check wheel controls on Play options
                 ]
                 }
 
@@ -144,6 +147,7 @@ class MenuTest(Test):
             for k in key_sequence:
                 capture_filename = q.key_press(k)
                 capture_filepath = os.path.join(self.output_dir, capture_filename)
+                expected_hash = 0
                 with open(capture_filepath, "rb") as f:
                     test_hash = hashlib.md5(f.read()).hexdigest()
                 try:
@@ -154,9 +158,11 @@ class MenuTest(Test):
                 except FileNotFoundError:
                     return self.return_failure("Missing expected output file: %s"
                                                % expected_output_path)
+#                    pass # useful for generating expected_out files
                 if test_hash != expected_hash:
                     return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
                                                % (capture_filename, expected_hash, test_hash))
+#                    pass # generating expected_out files
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()

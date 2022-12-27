@@ -45,7 +45,7 @@ class Cam(object):
         # Some cams don't buffer cleanly (is this a DryOS or Qemu problem?)
         # and screen caps can be unreliable, with tearing or other artifacts.
         # We must compensate later on.
-        unreliable_screencap_cams = {"50D"}
+        unreliable_screencap_cams = {}
         if cam in unreliable_screencap_cams:
             self.unreliable_screencaps = True
         else:
