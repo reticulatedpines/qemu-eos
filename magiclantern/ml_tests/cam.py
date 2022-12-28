@@ -24,7 +24,8 @@ class Cam(object):
     supported_cams = eos_cams.union(powershot_cams, gui_cams,
                                     sd_cams, cf_cams)
 
-    def __init__(self, cam="", rom_dir="", source_dir=""):
+    def __init__(self, cam="", rom_dir="", source_dir="",
+                 fail_early=False):
         if not cam:
             raise CamError("No cam model given")
 
@@ -42,6 +43,8 @@ class Cam(object):
         if not os.path.isdir(rom_subdir):
             raise CamError("Rom subdir didn't exist: %s" % rom_subdir)
         
+        self.fail_early = fail_early
+
         # Some cams don't buffer cleanly (is this a DryOS or Qemu problem?)
         # and screen caps can be unreliable, with tearing or other artifacts.
         # We must compensate later on.
@@ -108,13 +111,16 @@ class Cam(object):
         self.tests = [] # A TestSuite will initialise this with valid tests
 
     def run_tests(self):
+        all_tests_passed = True
         for test in self.tests:
             with test as t:
                 if not t.run():
+                    all_tests_passed = False
                     if t.verbose:
                         print(self.model + " FAIL: " + t.fail_reason)
-                    return False # FIXME handle fail_early behaviour
-        return True
+                    if self.fail_early:
+                        return False
+        return all_tests_passed
 
     def __repr__(self):
         s = "Model: %s\n" % self.model

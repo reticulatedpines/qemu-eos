@@ -88,11 +88,12 @@ def parse_args():
                         help="Which test groups to run, defaults to all, "
                              "available groups: %s" % test_group_names)
 
-    parser.add_argument("--no-fail-early",
+    parser.add_argument("--fail-early",
                         action="store_true",
                         default=False,
-                        help="Override the default of failing all testing "
-                             "at the first test that fails")
+                        help="Instead of running all tests and returning the summary, "
+                             "exit immediately when any test fails. "
+                             "Intended for dev work.")
 
     parser.add_argument("--verbose",
                         action="store_true",
@@ -100,11 +101,6 @@ def parse_args():
                         help="Be spammier.  This includes Qemu output.")
 
     args = parser.parse_args()
-
-    if args.no_fail_early:
-        args.fail_early = False
-    else:
-        args.fail_early = True
 
     if not os.path.isdir(args.qemu_build_dir):
         print("FAIL: qemu_build_dir didn't exist / couldn't be "

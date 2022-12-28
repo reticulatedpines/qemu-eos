@@ -29,19 +29,13 @@ class TestSuite(object):
                  source_dir="",
                  test_output_dir="",
                  test_names=[],
-                 fail_early=True,
+                 fail_early=False,
                  verbose=False
                 ):
-        # fail_early controls abort strategy.  We default to any failing
-        # test aborting the job.
-        #
-        # Setting False allows running a complete suite even when tests fail
-        # (perhaps you know a change should break things and want to see
-        #  how bad the problem is)
-        #
-        # We do not catch exceptions from points earlier than running tests.
-        # If your config is so bad that tests can't even be created,
-        # this cannot be overridden.
+        # fail_early controls abort strategy.  We default to running all
+        # specified cams, and giving a summary of results.  With fail_early,
+        # we abort as soon as any cam test reports failure.  Faster, but
+        # less comprehensive, intended for dev work.
 
         # TODO validate rom dir
         
@@ -83,13 +77,17 @@ class TestSuite(object):
         self.cams = []
         for c in cams:
             try:
-                self.cams.append(Cam(c, rom_dir, source_dir))
+                self.cams.append(Cam(c, rom_dir, source_dir,
+                                     fail_early=self.fail_early))
             except CamError as e:
                 print("FAIL: %s" % c)
                 print("      %s" % e)
 
         # add appropriate tests to each cam
         for c in self.cams:
+            c.tests.append(tests.FailTest(c, qemu_dir,
+                                          self.test_output_dir,
+                                          verbose=verbose))
             for t in test_names:
                 if t not in test_group_names:
                     raise TestSuiteError("Unexpected test name: %s" % t)

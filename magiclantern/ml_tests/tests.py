@@ -74,7 +74,7 @@ class Test(abc.ABC):
 
     def return_failure(self, reason):
         self.passed = False
-        self.fail_reason = reason
+        self.fail_reason = self.__class__.__name__ + ": " + reason
         if self.qemu_runner:
             self.qemu_runner.shutdown()
         return False
@@ -199,4 +199,16 @@ class MenuTest(Test):
         #print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
         return self.return_success()
 
+
+class FailTest(Test):
+    """
+    This test always fails.  Useful for testing the test system itself.
+    """
+
+    def run(self):
+        if self.verbose:
+            print("FailTest starting on %s %s" %
+                  (self.cam.model, self.cam.code_rom_md5))
+
+        return self.return_failure("FailTest always fails")
 
