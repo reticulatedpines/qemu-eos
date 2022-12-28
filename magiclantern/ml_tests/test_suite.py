@@ -85,9 +85,6 @@ class TestSuite(object):
 
         # add appropriate tests to each cam
         for c in self.cams:
-            c.tests.append(tests.FailTest(c, qemu_dir,
-                                          self.test_output_dir,
-                                          verbose=verbose))
             for t in test_names:
                 if t not in test_group_names:
                     raise TestSuiteError("Unexpected test name: %s" % t)
