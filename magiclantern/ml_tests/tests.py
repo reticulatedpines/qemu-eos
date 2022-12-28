@@ -27,10 +27,22 @@ class Test(abc.ABC):
     # It's a list of ROMs so we can support different ROM
     # dumps if required.
     known_cams = {"50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
-                  "60D": ["d266ce304585952fb3a05a9f6c304f2f"]}
+                  "60D": ["d266ce304585952fb3a05a9f6c304f2f"],
+                  "700D": ["f6c20df071b3514fa65f35dc5d71b484"],
+                 }
 
     def __init__(self, cam, qemu_dir, test_dir, job_ID=0,
-                 verbose=False):
+                 verbose=False, force_continue=False):
+        """
+        The force_continue flag makes tests try and do as much as possible
+        even if they encounter a failure state.  This is for debugging /
+        development only (e.g. for MenuTests it allows capturing the
+        intermediate screenshots, useful for generating expected output
+        files on a new cam).
+
+        It also sets the final test state to failed, so you can't accidentally
+        break things by having all tests erroneously pass.
+        """
         self.cam = cam
 
         # get default disk image paths, individual tests may override these
@@ -41,6 +53,7 @@ class Test(abc.ABC):
         self.qemu_dir = qemu_dir
         self.qemu_runner = None
         self.verbose = verbose
+        self.force_continue = force_continue
         self.job_ID = job_ID
         self.gdb_port = 1234 + job_ID
         self.vnc_port = 12345 + job_ID
@@ -67,8 +80,13 @@ class Test(abc.ABC):
         return False
 
     def return_success(self):
-        self.passed = True
-        return True
+        if self.force_continue:
+            # always fail if we're in debug mode
+            self.passed = False
+            return False
+        else:
+            self.passed = True
+            return True
 
     def __enter__(self):
         path_parts = [self.output_top_dir,
@@ -112,7 +130,15 @@ class MenuTest(Test):
                  "left", "left", "left", "left", "left", "left", "left", # cycle through all menus
                  "up", "up", "space", "down", "space", # check sub-menus work; change auto rotation
                  "left", "up", "up", "space", "pgup", "space", # check wheel controls on Play options
-                ]
+                ],
+                "f6c20df071b3514fa65f35dc5d71b484": # 700D ROM1
+                ["f1", "m", "right", "right", "right", "right", "right",
+                 "right", "right", "right", "right", "right", "right",
+                 "right", # cycle through all menus.  This rom has no lens attached and LV usage seems to lock the cam.
+                 "space", "right", "space", # check sub-menus, change movie res
+                 # no wheel controls on this cam?  PgUp / PgDown are unmapped.
+                 "left", "space", "down", "down", "up", "space", # test up/down in grid display sub-menu
+                ],
                 }
 
     def run(self):
@@ -156,13 +182,17 @@ class MenuTest(Test):
                     with open(expected_output_path, "rb") as f:
                         expected_hash = hashlib.md5(f.read()).hexdigest()
                 except FileNotFoundError:
-                    return self.return_failure("Missing expected output file: %s"
-                                               % expected_output_path)
-#                    pass # useful for generating expected_out files
+                    if self.force_continue:
+                        pass
+                    else:
+                        return self.return_failure("Missing expected output file: %s"
+                                                   % expected_output_path)
                 if test_hash != expected_hash:
-                    return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
-                                               % (capture_filename, expected_hash, test_hash))
-#                    pass # generating expected_out files
+                    if self.force_continue:
+                        pass
+                    else:
+                        return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
+                                                   % (capture_filename, expected_hash, test_hash))
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
