@@ -28,6 +28,7 @@ class Test(abc.ABC):
     # dumps if required.
     known_cams = {"50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
                   "60D": ["d266ce304585952fb3a05a9f6c304f2f"],
+                  "100D": ["e06a0e3919ac4d4ef609a864e937a5d3"],
                   "700D": ["f6c20df071b3514fa65f35dc5d71b484"],
                  }
 
@@ -131,6 +132,13 @@ class MenuTest(Test):
                  "up", "up", "space", "down", "space", # check sub-menus work; change auto rotation
                  "left", "up", "up", "space", "pgup", "space", # check wheel controls on Play options
                 ],
+                "e06a0e3919ac4d4ef609a864e937a5d3": # 100D ROM1
+                ["m", "wait l", "wait l", "m", # LV looks weird on this cam and takes a long time to activate
+                 "right", "right", "right", "right",
+                 "right", "right", "right", "right", "right", "right",
+                 "right", # cycle through all menus
+                 "up", "up", "up", "space", "down", "space", # check sub-menus; LCD auto off
+                ],
                 "f6c20df071b3514fa65f35dc5d71b484": # 700D ROM1
                 ["f1", "m", "right", "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", "right",
@@ -171,7 +179,14 @@ class MenuTest(Test):
             q = self.qemu_runner
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
-                capture_filename = q.key_press(k)
+                delay = 0.3
+                if k.startswith("wait"):
+                    # prefixing a vnc key string with "wait " adds
+                    # extra delay before capturing the screen.  Some
+                    # menu transitions are much slower than others
+                    delay = 5
+                    k = k.split()[-1]
+                capture_filename = q.key_press(k, delay=delay)
                 capture_filepath = os.path.join(self.output_dir, capture_filename)
                 expected_hash = 0
                 with open(capture_filepath, "rb") as f:

@@ -215,7 +215,7 @@ class QemuRunner:
             s.send(b"system_powerdown\n")
         sleep(2)
 
-    def key_press(self, key, capture_screen=True):
+    def key_press(self, key, capture_screen=True, delay=0.3):
         """
         Use VNC to press a key in the VM, and by default,
         capture the screen a short time afterwards.
@@ -224,14 +224,14 @@ class QemuRunner:
         """
         self.vnc_client.keyPress(key)
         if capture_screen:
-            return self.capture_screen()
+            return self.capture_screen(delay)
         return None
 
-    def capture_screen(self):
+    def capture_screen(self, delay):
         """
         Capture VM screen via VNC.
         """
-        sleep(0.3)
+        sleep(delay)
         n = self.screen_cap_counter
         self.screen_cap_counter += 1
         capture_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
