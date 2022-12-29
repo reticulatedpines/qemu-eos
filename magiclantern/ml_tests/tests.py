@@ -26,7 +26,9 @@ class Test(abc.ABC):
     # Map cams for which we have tests, to code ROM MD5s.
     # It's a list of ROMs so we can support different ROM
     # dumps if required.
-    known_cams = {"50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
+    known_cams = {
+                  "5D3": ["e6a90e8497c2c1187e0322010a42b9b5"],
+                  "50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
                   "60D": ["d266ce304585952fb3a05a9f6c304f2f"],
                   "100D": ["e06a0e3919ac4d4ef609a864e937a5d3"],
                   "500D": ["0a9fce1e4ef6d2ac2c3bc63eb96d3c34"],
@@ -121,6 +123,14 @@ class MenuTest(Test):
     # adapted).
 
     qemu_key_sequences = {
+                "e6a90e8497c2c1187e0322010a42b9b5": # 5D3 ROM1
+                ["m", "l", "l", "m",
+                 "left", "left", "left", "left", "left", "left", "left", "left", "left",
+                 "left", "left", "left", "left", "left", "left", "left", "left", "left",
+                 "left", "left", "left", # cycle through all menus
+                 "up", "up", "space", "down", "space", # sub-menu test, Tv/Av dial direction
+                 "right", "right", "right", "up", "space", "pgdn", "space", # ISO speed increment, wheel test
+                ],
                 "424545a5cfe10b1a5d8cefffe9fe5297": # 50D ROM1
                 ["m", "l", "l", "m", "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", # cycle through all menus
