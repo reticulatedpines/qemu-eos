@@ -43,6 +43,7 @@ def main():
     # output result summary, and exit with appropriate return code
     print("\nTest Summary:")
     any_failures = False
+    status_strings = []
     for c in suite.cams:
         total_tests = len(c.tests)
         passed_tests = 0
@@ -54,10 +55,15 @@ def main():
                 failed_tests += 1
                 any_failures = True
         status = c.model + " [%d/%d]" % (passed_tests, total_tests)
-        if passed_tests == total_tests:
-            print("PASS: " + status)
+        if passed_tests > 0 and passed_tests == total_tests:
+            status = "PASS: " + status
         else:
-            print("FAIL: " + status)
+            status = "FAIL: " + status
+        status_strings.append(status)
+
+    status_strings.sort()
+    for s in status_strings:
+        print(s)
 
     if not any_failures:
         sys.exit(0)

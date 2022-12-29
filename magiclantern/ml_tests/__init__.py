@@ -3,5 +3,6 @@
 test_group_names = {"menu", "gdb"}
 
 from . import test_suite
-from . import tests
+from . import menu_test
+from . import fail_test
 from . import cam

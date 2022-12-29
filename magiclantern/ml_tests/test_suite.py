@@ -6,7 +6,7 @@ import time
 
 from . import test_group_names
 from .cam import Cam, CamError
-from . import tests
+from .menu_test import MenuTest
 
 class TestSuiteError(Exception):
     pass
@@ -90,10 +90,10 @@ class TestSuite(object):
                 if t not in test_group_names:
                     raise TestSuiteError("Unexpected test name: %s" % t)
                 if t == "menu" and c.can_emulate_gui:
-                    c.tests.append(tests.MenuTest(c, qemu_dir,
-                                                  self.test_output_dir,
-                                                  verbose=verbose,
-                                                  force_continue=force_continue))
+                    c.tests.append(MenuTest(c, qemu_dir,
+                                            self.test_output_dir,
+                                            verbose=verbose,
+                                            force_continue=force_continue))
 
             if not c.tests:
                 print("WARN: Cam has no valid tests to run: %s" % c.model)
