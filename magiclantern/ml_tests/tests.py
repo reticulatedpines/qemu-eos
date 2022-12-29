@@ -29,6 +29,7 @@ class Test(abc.ABC):
     known_cams = {"50D": ["424545a5cfe10b1a5d8cefffe9fe5297"],
                   "60D": ["d266ce304585952fb3a05a9f6c304f2f"],
                   "100D": ["e06a0e3919ac4d4ef609a864e937a5d3"],
+                  "500D": ["0a9fce1e4ef6d2ac2c3bc63eb96d3c34"],
                   "700D": ["f6c20df071b3514fa65f35dc5d71b484"],
                  }
 
@@ -146,6 +147,12 @@ class MenuTest(Test):
                  "space", "right", "space", # check sub-menus, change movie res
                  # no wheel controls on this cam?  PgUp / PgDown are unmapped.
                  "left", "space", "down", "down", "up", "space", # test up/down in grid display sub-menu
+                ],
+                "0a9fce1e4ef6d2ac2c3bc63eb96d3c34": # 500D ROM1
+                ["f1", "m", "l", "l", "m", # inital info screen, menu and LV
+                 "left", "left", "left", "left", "left", "left", "left", "left", # cycle through menus
+                 "right", "space", "right", "space", # sub-menu test, change screen brightness
+                 "right", "space", "up", "up", "down", "space", # up/down test.  Unsure on sub-menu, it's Polish lang
                 ],
                 }
 
