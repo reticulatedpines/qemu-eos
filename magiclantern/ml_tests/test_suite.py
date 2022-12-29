@@ -30,6 +30,7 @@ class TestSuite(object):
                  test_output_dir="",
                  test_names=[],
                  fail_early=False,
+                 force_continue=False,
                  verbose=False
                 ):
         # fail_early controls abort strategy.  We default to running all
@@ -91,7 +92,8 @@ class TestSuite(object):
                 if t == "menu" and c.can_emulate_gui:
                     c.tests.append(tests.MenuTest(c, qemu_dir,
                                                   self.test_output_dir,
-                                                  verbose=verbose))
+                                                  verbose=verbose,
+                                                  force_continue=force_continue))
 
             if not c.tests:
                 print("WARN: Cam has no valid tests to run: %s" % c.model)

@@ -17,6 +17,7 @@ def main():
                                           test_output_dir=args.test_output_dir,
                                           test_names=args.tests,
                                           fail_early=args.fail_early,
+                                          force_continue=args.force_continue,
                                           verbose=args.verbose
                                           )
 
@@ -94,6 +95,12 @@ def parse_args():
                         help="Instead of running all tests and returning the summary, "
                              "exit immediately when any test fails. "
                              "Intended for dev work.")
+
+    parser.add_argument("--force-continue",
+                        action="store_true",
+                        default=False,
+                        help="For developers only.  Make tests do as much work "
+                             "as possible.  Also forces all tests to fail.")
 
     parser.add_argument("--verbose",
                         action="store_true",
