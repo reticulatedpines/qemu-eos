@@ -34,14 +34,34 @@ def main():
     try:
         suite.run_tests()
     except ml_tests.tests.TestError:
-        # some test failed
+        # some unrecoverable test problem
         raise
     except ml_tests.test_suite.TestSuiteError:
         # something was wrong in the overall test setup itself
         raise
 
-    # Suite has finished (possibly with handled failures from above?).
-    # Do something with the results.
+    # output result summary, and exit with appropriate return code
+    print("\nTest Summary:")
+    any_failures = False
+    for c in suite.cams:
+        total_tests = len(c.tests)
+        passed_tests = 0
+        failed_tests = 0
+        for t in c.tests:
+            if t.passed == True:
+                passed_tests += 1
+            else:
+                failed_tests += 1
+                any_failures = True
+        status = c.model + " [%d/%d]" % (passed_tests, total_tests)
+        if passed_tests == total_tests:
+            print("PASS: " + status)
+        else:
+            print("FAIL: " + status)
+
+    if not any_failures:
+        sys.exit(0)
+    sys.exit(-1)
 
 
 def parse_args():
