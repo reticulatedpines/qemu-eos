@@ -546,6 +546,8 @@ EOSRegionHandler eos_handlers[] =
     { "SIO8",         0xC0820800, 0xC08208FF, eos_handle_sio, 8 },
     { "SIO9",         0xC0820900, 0xC08209FF, eos_handle_sio, 9 },
     { "SIO10",        0xC0820A00, 0xC0820AFF, eos_handle_sio, 10 },
+    // Digic 2-5 P&S ADC
+    { "ADC",          0xC0900040, 0xC0900056, eos_handle_adc, 1 },
     { "MREQ",         0xC0203000, 0xC02030FF, eos_handle_mreq, 0 },
     { "DMA1",         0xC0A10000, 0xC0A100FF, eos_handle_dma, 1 },
     { "DMA2",         0xC0A20000, 0xC0A200FF, eos_handle_dma, 2 },
@@ -1867,11 +1869,13 @@ static void patch_EOSM5(void)
 static void patch_A1100(void)
 {
     /* avoid immediate shutdown from temperature check at ffc104fc
-     * better fix would be to return sane ADC values for the MMIO
+     * not needed with 0xC09000xx ADC handler
      */
+    /*
     fprintf(stderr, "Patching 0xFFC10504 (temp check)\n");
     uint32_t nop = 0xe1a00000; // NOP 00 00 a0 e1;
     MEM_WRITE_ROM(0xFFC10504, (uint8_t*) &nop, 4);
+    */
 
     /*
     // trigger ROMSTARTER DISKBOOT etc checks
@@ -3492,27 +3496,63 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
     }
     else
     {
-        int channel = (address & 0xFF) >> 2;
-        msg = "channel #%d";
-        msg_arg1 = channel;
-        
-        if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) == 0 ||
-            strcmp(eos_state->model->name, MODEL_NAME_EOSM10) == 0)
-        {
-            /* values from Ant123's camera (M3) */
-            uint32_t adc_values[] = {
-                0x0000de40, 0x00008c00, 0x00008300, 0x00003ca0,
-                0x00003eb0, 0x00003f00, 0x0000aa90, 0x00000050,
-                0x00003c20, 0x0000fd60, 0x0000f720, 0x00000030,
-                0x00008a80, 0x0000a440, 0x00000020, 0x00000030,
-                0x00000030, 0x00008900, 0x0000fd60, 0x0000fed0,
-                0x0000fed0, 0x00000310, 0x00000020, 0x00000020,
-                0x00000020, 0x00000020, 0x00000010, 0x00000000
-            };
+        // digic 6 style
+        if(parm == 0) {
+            int channel = (address & 0xFF) >> 2;
+            msg = "channel #%d";
+            msg_arg1 = channel;
             
-            if (channel < COUNT(adc_values))
+            if (strcmp(eos_state->model->name, MODEL_NAME_EOSM3) == 0 ||
+                strcmp(eos_state->model->name, MODEL_NAME_EOSM10) == 0)
             {
-                ret = adc_values[channel];
+                /* values from Ant123's camera (M3) */
+                uint32_t adc_values[] = {
+                    0x0000de40, 0x00008c00, 0x00008300, 0x00003ca0,
+                    0x00003eb0, 0x00003f00, 0x0000aa90, 0x00000050,
+                    0x00003c20, 0x0000fd60, 0x0000f720, 0x00000030,
+                    0x00008a80, 0x0000a440, 0x00000020, 0x00000030,
+                    0x00000030, 0x00008900, 0x0000fd60, 0x0000fed0,
+                    0x0000fed0, 0x00000310, 0x00000020, 0x00000020,
+                    0x00000020, 0x00000020, 0x00000010, 0x00000000
+                };
+
+                if (channel < COUNT(adc_values))
+                {
+                    ret = adc_values[channel];
+                }
+            }
+        }
+        else if (parm == 1)
+        {
+            int channel = (address - 0xc0900040) >> 1;
+            msg = "channel #%d"; // misleading, could be either of two
+            msg_arg1 = channel;
+            if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0)
+            {
+                // digic 2 - 5 P&S style, each ADC is half word, but fw reads full word and shifts/masks
+                // representative values from d10, channel usage seems
+                // mostly consistent for digic 2-5, but valid voltage
+                // may vary and AA battery cams don't have tbat and
+                // may use different order for temps
+                // see https://chdk.setepontos.com/index.php?topic=10385.msg102943#msg102943
+                uint32_t adc_values[] = {
+                   0,   // channel  0 0xc0900040 0 0x0
+                   1,   // channel  1 0xc0900042 1 0x1
+                   803, // channel  2 0xc0900044 803 0x323 < vbat ~4.037v
+                   471, // channel  3 0xc0900046 471 0x1d7 < tccd ~15c
+                   448, // channel  4 0xc0900048 448 0x1c0 < topt ~13c
+                   422, // channel  5 0xc090004a 422 0x1a6 < tbat ~ 17c
+                   1,   // channel  6 0xc090004c 1 0x1
+                   1,   // channel  7 0xc090004e 1 0x1
+                   1,   // channel  8 0xc0900050 1 0x1
+                   1,   // channel  9 0xc0900052 1 0x1
+                   565, // channel 10 0xc0900054 565 0x235
+                   524, // channel 11 0xc0900056 524 0x20c
+                };
+                if (channel >= 0 && channel < COUNT(adc_values))
+                {
+                    ret = adc_values[channel & ~1] | (adc_values[channel | 1]  << 16);
+                }
             }
         }
     }
