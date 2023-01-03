@@ -5,8 +5,12 @@ source -v debug-logging.gdb
 macro define CURRENT_TASK 0x195C
 macro define CURRENT_ISR  (MEM(0x670) ? MEM(0x674) >> 2 : 0)
 
+# LogCameraEvent
+b *0xffc56598
+DebugMsg1_log
+
 b *0xFFC0B284
-assert_log
+assert0_log
 
 b *0xFFC0AFAC
 task_create_log
