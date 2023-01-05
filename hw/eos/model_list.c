@@ -257,6 +257,8 @@ struct eos_model_desc eos_model_list[] = {
         .mmio_size              = 0x01000000,
         .card_led_address       = 0xC02200CC,
         .current_task_addr      = 0x195C,
+        .sd_driver_interrupt    = 0x4b, // gdb log "SdConInt"
+        .sd_dma_interrupt       = 0x32, // gdb log "SdDmaInt"
     },
 /*************************** DIGIC V **********************************/
     {
