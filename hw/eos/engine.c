@@ -1208,9 +1208,10 @@ unsigned int eos_handle_jpcore(unsigned int parm, unsigned int address, unsigned
                 /* EOSM: this value starts JPCORE, but fails the DCIM test */
                 //ret = 0x1010000;
 
-                if (strcmp(eos_state->model->name, "1300D") == 0)
+                if (strcmp(eos_state->model->name, "1300D") == 0
+                    || strcmp(eos_state->model->name, "A1100") == 0)
                 {
-                    /* 1300D requires it */
+                    /* 1300D, A1100 requires it (A1100 avoids HardwareDefect in ffcbb5bc)  */
                     ret = 0x1010000;
                 }
             }
@@ -1245,7 +1246,9 @@ unsigned int eos_handle_jpcore(unsigned int parm, unsigned int address, unsigned
             msg = "interrupt status? (70D loop)";
             ret = rand();
 
-            if (strcmp(eos_state->model->name, "1300D") == 0)
+            if (strcmp(eos_state->model->name, "1300D") == 0
+                // A1100 avoids HardwareDefect in ffcbb8f0
+                || strcmp(eos_state->model->name, "A1100") == 0)
             {
                 ret = 0x400;
             }
