@@ -3374,7 +3374,12 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
         case 0x016C:    /* 5D3 */
         case 0x0134:    /* EOSM */
             msg = "MIC CONNECT";
-            ret = 1;
+            // A1100 this is related to startup key press (ffc3040c)
+            if((strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) && ((address & 0xFFFF) == 0x134)) {
+                ret = 0;
+            } else {
+                ret = 1;
+            }
 #ifdef IGNORE_CONNECT_POLL
             return ret;
 #endif
@@ -3414,6 +3419,9 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
             if (eos_state->model->digic_version == 5) {
                 msg = "VIDEO CONNECT";      /* EOSM; likely other D5 models */
                 ret = 1;                    /* negative logic */
+            } else if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0 ) {
+                msg = "PB startup";       /* indicates play switch startup ffc3040c */
+                ret = 1;
             } else {
                 msg = "HDMI CONNECT";       /* 600D; likely other D4 models */
                 ret = 0;
@@ -3421,6 +3429,24 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
 #ifdef IGNORE_CONNECT_POLL
             return ret;
 #endif
+            break;
+
+        // A1100 keyboard etc GPO (read by GetKbdState ffc30b28, bits from CHDK kbd.c)
+        case 0x200:
+        case 0x204:
+        case 0x208:
+            if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0 ) {
+                uint32_t physw_mmio_bits[] = {
+                    0x00000000, // unknown
+                    0x0000FF00, // unpressed state of D-pad, Menu, PRINT
+                    0x000010F0, // unpressed state of zoom, shoot.
+                                // 0x1000 indicates video cable not connected
+                                // 0x00008000 may be battery door, unclear if used on AA cam
+                                // upper half word of 3rd MMIO is ignored, corresponding
+                                // physw_status bits come from kbd_read_keys_r2 (ffc304a4)
+                };
+                ret = physw_mmio_bits[(address&0xc) >> 2];
+            }
             break;
 
         case 0x320C:
