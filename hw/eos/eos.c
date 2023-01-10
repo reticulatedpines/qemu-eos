@@ -3550,7 +3550,7 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
                        1,   // channel  8 0xc0900050 1 0x1
                        1,   // channel  9 0xc0900052 1 0x1
                        565, // channel 10 0xc0900054 565 0x235
-                       524, // channel 11 0xc0900056 524 0x20c
+                       1,   // channel 11 0xc0900056 1 (USB not present) - 524 0x20c (USB present)
                     };
                     if (channel >= 0 && channel < COUNT(adc_values))
                     {
