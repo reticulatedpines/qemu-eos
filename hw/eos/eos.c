@@ -3454,9 +3454,9 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
                 uint32_t physw_mmio_bits[] = {
                     0x00000000, // unknown
                     0x0000FF00, // unpressed state of D-pad, Menu, PRINT
-                    0x000010F0, // unpressed state of zoom, shoot.
+                    0x000090F0, // unpressed state of zoom, shoot.
                                 // 0x1000 indicates video cable not connected
-                                // 0x00008000 may be battery door, unclear if used on AA cam
+                                // 0x8000 is battery / card door, must be set to boot (see ffc601cc)
                                 // upper half word of 3rd MMIO is ignored, corresponding
                                 // physw_status bits come from kbd_read_keys_r2 (ffc304a4)
                 };
