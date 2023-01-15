@@ -665,6 +665,21 @@ static void eos_rom_write(void *opaque, hwaddr addr, uint64_t value, uint32_t si
         }
     }
 
+    // flash control registers at 0xffc00aaa and 0xffc00554, see ffdf4e58 and
+    // ffdf4dec which are copied to ITCM at 0x1b0 by ffdf5024 depending on
+    // operation
+    // writes to registers must be ignored to avoid firmware corruption
+    // more correct implementation would detect commands and only allow writes
+    // when enabled
+    // Almost certainly applies to many other cams
+    if (strcmp(s->model->name, MODEL_NAME_A1100) == 0) {
+        // actual firmware addresses are ffc* as above, but qemu sees 0xf8*
+        if(address == 0xf8000aaa ||  address == 0xf8000554)  {
+            msg = "Flash control";
+            goto end;
+        }
+    }
+
     switch(size)
     {
         case 1:
