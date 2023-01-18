@@ -3749,7 +3749,7 @@ unsigned int eos_handle_uart(unsigned int parm, unsigned int address, unsigned c
                     strcmp(eos_state->uart.chr.chr->filename, "mux") != 0 &&
                     strcmp(eos_state->uart.chr.chr->filename, "file") != 0)
                 {
-                    fprintf(stderr, KRED"%c"KRESET, value);
+                    fprintf(stderr, "%c", value);
                 }
 
                 /* 0 written during initialization */
