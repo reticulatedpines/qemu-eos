@@ -7,6 +7,7 @@ import subprocess
 from time import sleep
 import socket
 import hashlib
+import tempfile
 
 import vncdotool
 from vncdotool import api
@@ -138,6 +139,10 @@ class QemuRunner:
 
         self.verbose = verbose
 
+        # later, in __enter__, we attach temp files to these
+        self.stdout = None
+        self.stderr = None
+
         # Some cams have glitchy displays which we must work around
         self.unreliable_screencaps = unreliable_screencaps
 
@@ -182,9 +187,16 @@ class QemuRunner:
         qemu_env["QEMU_EOS_WORKDIR"] = self.rom_dir
         kwargs = {"env":qemu_env,
                   "stdin":subprocess.PIPE}
-        if not self.verbose:
-            kwargs["stdout"] = subprocess.DEVNULL
-            kwargs["stderr"] = subprocess.DEVNULL
+        if self.verbose:
+            # don't redirect stdout stderr, just spam console
+            pass
+        else:
+            # capture stdout and stderr, this makes it quiet,
+            # and allows processing the output.
+            self.stdout = tempfile.TemporaryFile()
+            self.stderr = tempfile.TemporaryFile()
+            kwargs["stdout"] = self.stdout
+            kwargs["stderr"] = self.stderr
         self.qemu_process = subprocess.Popen(self.qemu_command,
                                              **kwargs)
         # TODO: bit hackish, but we give some time for Qemu
@@ -196,6 +208,13 @@ class QemuRunner:
 
     def __exit__(self, *args):
         self.qemu_process.terminate()
+        # trigger removal of temp files, if any
+        if self.stdout:
+            self.stdout.close()
+            self.stdout = None
+        if self.stderr:
+            self.stderr.close()
+            self.stderr = None
         if self.vnc_client:
             self.vnc_client.disconnect()
         try:
@@ -208,7 +227,13 @@ class QemuRunner:
         Instructs Qemu to shut down the VM, via monitor socket.
         """
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect(self.monitor_socket_path)
+        try:
+            s.connect(self.monitor_socket_path)
+        except FileNotFoundError:
+            # can't connect to monitor, maybe qemu died already
+            sleep(2)
+            return
+
         if force:
             s.send(b"quit\n")
         else:

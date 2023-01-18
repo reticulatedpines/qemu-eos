@@ -7,6 +7,7 @@ import time
 from . import test_group_names
 from .cam import Cam, CamError
 from .menu_test import MenuTest
+from .log_test import LogTest
 
 class TestSuiteError(Exception):
     pass
@@ -94,6 +95,11 @@ class TestSuite(object):
                                             self.test_output_dir,
                                             verbose=verbose,
                                             force_continue=force_continue))
+                if t == "log":
+                    c.tests.append(LogTest(c, qemu_dir,
+                                           self.test_output_dir,
+                                           verbose=verbose,
+                                           force_continue=force_continue))
 
             if not c.tests:
                 print("WARN: Cam has no valid tests to run: %s" % c.model)
@@ -144,6 +150,8 @@ class TestSuite(object):
                 raise TestSuiteError("badly detected failure, unpassed test")
             elif fail_reason_tests:
                 # shouldn't happen, the first case should catch this
+                #
+                # Can be a signal you forgot to "return self.return_failure()"
                 print("ERR : badly detected failure")
                 print("FAIL: %s" % c.model)
                 for t in fail_reason_tests:

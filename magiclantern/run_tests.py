@@ -33,9 +33,6 @@ def main():
 
     try:
         suite.run_tests()
-    except ml_tests.tests.TestError:
-        # some unrecoverable test problem
-        raise
     except ml_tests.test_suite.TestSuiteError:
         # something was wrong in the overall test setup itself
         raise
