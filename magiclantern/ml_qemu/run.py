@@ -204,9 +204,34 @@ class QemuRunner:
         # happening before Qemu is up.  There should be a more
         # graceful way.  Check status via monitor socket possibly?
         sleep(5.5)
+
+        # check it didn't die early
+        if self.qemu_process.poll():
+            if self.stdout:
+                print("Qemu stdout:\n")
+                self.stdout.seek(0)
+                print(self.stdout.read().decode())
+            if self.stderr:
+                print("Qemu stderr:\n")
+                self.stderr.seek(0)
+                print(self.stderr.read().decode())
+            self._cleanup()
+            raise QemuRunnerError("Qemu died unexpectedly early")
+
         return self
 
     def __exit__(self, *args):
+        self._cleanup()
+
+    def _cleanup(self):
+        """
+        If Qemu dies during our init, we want to cleanup
+        before the context manager ends, which will not happen
+        if an exception is raised during __enter__.
+
+        If we may encounter an unhandled exception, we should
+        ensure this function is called first.
+        """
         self.qemu_process.terminate()
         # trigger removal of temp files, if any
         if self.stdout:
@@ -247,7 +272,19 @@ class QemuRunner:
 
         Returns filename (not path) of captured image.
         """
-        self.vnc_client.keyPress(key)
+        try:
+            self.vnc_client.keyPress(key)
+        except vncdotool.api.VNCDoException:
+            # This is speculative code for debugging.  I've seen this
+            # exception very rarely and don't know the cause or trigger.
+            # It's a "connection refused" from VNC.
+            # Possibly sometimes qemu doesn't start fully in time,
+            # and the VNC port isn't up?
+            #
+            # I don't want to suppress all VNC exceptions, so I need
+            # to get more info here to understand cause.
+            print(self.vnc_client)
+            print(self.vnc_client.__dict__)
         if capture_screen:
             return self.capture_screen(delay)
         return None
