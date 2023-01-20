@@ -158,7 +158,6 @@ class QemuRunner:
         self.vnc_display = vnc_display
         if vnc_display:
             self.qemu_command.extend(["-vnc", vnc_display])
-            self.vnc_client = vncdotool.api.connect(self.vnc_display)
         else:
             self.vnc_client = None
 
@@ -204,6 +203,12 @@ class QemuRunner:
         # happening before Qemu is up.  There should be a more
         # graceful way.  Check status via monitor socket possibly?
         sleep(5.5)
+        if self.vnc_display:
+            try:
+                self.vnc_client = vncdotool.api.connect(self.vnc_display)
+            except Exception as e:
+                self._cleanup()
+                raise(e)
 
         # check it didn't die early
         if self.qemu_process.poll():
