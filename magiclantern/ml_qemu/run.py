@@ -274,7 +274,7 @@ class QemuRunner:
         """
         try:
             self.vnc_client.keyPress(key)
-        except vncdotool.api.VNCDoException:
+        except vncdotool.api.VNCDoException as e:
             # This is speculative code for debugging.  I've seen this
             # exception very rarely and don't know the cause or trigger.
             # It's a "connection refused" from VNC.
@@ -285,6 +285,7 @@ class QemuRunner:
             # to get more info here to understand cause.
             print(self.vnc_client)
             print(self.vnc_client.__dict__)
+            raise(e)
         if capture_screen:
             return self.capture_screen(delay)
         return None
