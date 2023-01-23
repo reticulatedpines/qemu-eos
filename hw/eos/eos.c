@@ -4306,7 +4306,7 @@ handle SIO related to optical image stabilization system
 probably common for other DryOS R31 era P&S with OIS. Later Digic IV cams are different
 communication is generally like other SIO, but with some IS specific interrupts and registers
 */
-static unsigned int eos_handle_A1100_is_com(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+static unsigned int eos_handle_A1100_IS_com(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
     const char *msg = NULL;
@@ -4447,7 +4447,7 @@ static unsigned int eos_handle_A1100_is_com(unsigned int parm, unsigned int addr
 unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     if ((address & 0xFFFFFF00) == 0xC0820400 && strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
-        return eos_handle_A1100_is_com(parm, address, type, value);
+        return eos_handle_A1100_IS_com(parm, address, type, value);
     }
 
     if (eos_state->sf && parm == eos_state->model->serial_flash_sio_ch)
@@ -5208,7 +5208,7 @@ unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsign
 A1100 appears to use MMIOs 0xc0500040-0xc0500058 to load optical image stabilization firmware, see ffcf5bf8
 Note 0xc05000A0 - 0xc05000B0 are used for apparently similar transfers for other devices in ffc32830
 */
-static unsigned int eos_handle_A1100_is_init(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+static unsigned int eos_handle_A1100_IS_init(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
     const char *msg = NULL;
@@ -5238,7 +5238,7 @@ static unsigned int eos_handle_A1100_is_init(unsigned int parm, unsigned int add
                 msg = "ISInit unk2 trigger int";
                 // int that releases semaphore 0x55a4 in ffcf5bf8, unclear whether actually
                 // triggered by this transfer in real firmware
-                // this int is also triggered from eos_handle_A1100_is_com, but only later
+                // this int is also triggered from eos_handle_A1100_IS_com, but only later
                 eos_trigger_int(0x51, 0);
                 init_done = 1;
             } else {
@@ -5258,7 +5258,7 @@ unsigned int eos_handle_cfdma(unsigned int parm, unsigned int address, unsigned 
     // A1100 uses 0xc0500040 - 58, related to IS system, see ffcf5bf8
     if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0
         && address >= 0xc0500040 &&  address <= 0xc0500058) {
-        return eos_handle_A1100_is_init(parm,address,type,value);
+        return eos_handle_A1100_IS_init(parm,address,type,value);
     }
 
     switch(address & 0x1F)
