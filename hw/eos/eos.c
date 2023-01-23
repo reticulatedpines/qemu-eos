@@ -4301,8 +4301,155 @@ static unsigned int eos_handle_rtc(unsigned int parm, unsigned int address, unsi
     return ret;
 }
 
+/*
+handle SIO related to optical image stabilization system
+probably common for other DryOS R31 era P&S with OIS. Later Digic IV cams are different
+communication is generally like other SIO, but with some IS specific interrupts and registers
+*/
+static unsigned int eos_handle_A1100_is_com(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    unsigned int ret = 0;
+    const char *msg = NULL;
+
+    static unsigned int last_sio_txdata = 0;
+    static unsigned int last_sio_rxdata = 0;
+    static unsigned int last_sio_setup1 = 0;
+    static unsigned int last_sio_setup2 = 0;
+    static unsigned int last_sio_setup3 = 0;
+
+    // 0x...28, used in IS setup, meaning unclear
+    static unsigned int last_conf = 0;
+
+    static uint8_t resp_data[3];
+    static unsigned int resp_bytes = 0;
+
+    switch(address & 0xFF)
+    {
+        case 0x04:
+            if((type & MODE_WRITE) && (value & 1))
+            {
+                static char default_msg[100];
+                const char *extra_msg = "";
+                // unclear what it should be if cmd isn't read, default to 0
+                last_sio_rxdata = 0;
+                // command
+                switch(last_sio_txdata) {
+                    // read response of last non-zero command
+                    case 0:
+                        // setup1 appears to specify the number of bits, but IS functions appear to always use 8
+                        if(resp_bytes > 0) {
+                            resp_bytes--;
+                            last_sio_rxdata = resp_data[resp_bytes];
+                            extra_msg = " read resp";
+                        } else {
+                            extra_msg = " unexpected read";
+                        }
+                        break;
+                    // IS firmware checksum calculated in ffcf5bf8
+                    case 0xF0:
+                        extra_msg = " checksum";
+                        resp_data[1] = 0x14;
+                        resp_data[0] = 0x09;
+                        resp_bytes = 2;
+                        break;
+
+                    // used in setup ffcf5bf8, no resp data
+                    case 0XF1:
+                        resp_bytes = 0;
+                        extra_msg = " unk F1";
+                        break;
+
+                    case 0xF:
+                        // horrible hack to make the logic around ffcf58e0 "work"
+                        // following call to ffcf573c expects to get the id of the previous command,
+                        // which in this case, happens to be 3
+                        extra_msg = " unk F";
+                        resp_data[0] = 3;
+                        resp_bytes=1;
+                        break;
+
+                    default:
+                        extra_msg = " unk cmd";
+                        // FUN_ffcf5808 appears to expect 2 ignored reads (or 1 based on *(param+6)), followed by last command
+                        // for at least 3, 6, 7, 0xa6
+                        resp_data[2] = 0;
+                        resp_data[1] = 0;
+                        resp_data[0] = (uint8_t)last_sio_txdata;
+                        resp_bytes=3;
+                        break;
+                }
+                // firmware appears to expect an interrupt after each command, required to release semaphores
+                // 0x37 appears to be the standard interrupt for SIO channel 4 (see ffc2d0b8), but is only used in early setup
+                // and the default handler for 0x37 uses different semaphore and MMIO
+                int int_num;
+                if(last_conf == 1) {
+                    // int that releases semaphore 0x55ac in IS setup function ffcf5bf8
+                    // also default for SIO 4. Unclear whether interrupts are not generated after setup, or just ignored
+                    int_num = 0x37;
+                } else {
+                    // int that releases semaphore 0x55a4 used by IS com functions ffcf57a0, ffcf573c and setup ffcf5bf8
+                    int_num = 0x51;
+                }
+                // nasty hack:
+                // without delay, TryTakeSemaphore in ffcf5f38 acquires sem 0x55ac, which causes subsequent calls to fail
+                // 10 seemed to fail occasionally
+                eos_trigger_int(int_num, 20);
+                snprintf(default_msg, sizeof(default_msg),
+                    "Transmit: CMD 0x%02X, setup 0x%08X 0x%08X 0x%08X 0x%08X INT %02x%s",
+                    last_sio_txdata, last_sio_setup1, last_sio_setup2, last_sio_setup3,
+                    last_conf, int_num, extra_msg
+                );
+                msg = default_msg;
+            }
+            else
+            {
+                // firmware waits for 0x04 to go to 0 after sending command
+                msg = "TX done?";
+                ret = 0;
+            }
+            break;
+
+        case 0x0C:
+            msg = "setup 1";
+            MMIO_VAR(last_sio_setup1);
+            break;
+
+        case 0x10:
+            msg = "setup 2";
+            MMIO_VAR(last_sio_setup2);
+            break;
+
+        case 0x14:
+            msg = "setup 3";
+            MMIO_VAR(last_sio_setup3);
+            break;
+
+        case 0x18:
+            msg = "TX register";
+            MMIO_VAR(last_sio_txdata);
+            break;
+
+        case 0x1C:
+            msg = "RX register";
+            MMIO_VAR(last_sio_rxdata);
+            break;
+
+        case 0x28:
+            msg = "IS conf?";
+            MMIO_VAR(last_conf);
+            break;
+    }
+
+    io_log("IS", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
+    if ((address & 0xFFFFFF00) == 0xC0820400 && strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+        return eos_handle_A1100_is_com(parm, address, type, value);
+    }
+
     if (eos_state->sf && parm == eos_state->model->serial_flash_sio_ch)
     {
         /* serial flash (SFIO) */
@@ -5057,10 +5204,62 @@ unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsign
     return ret;
 }
 
+/*
+A1100 appears to use MMIOs 0xc0500040-0xc0500058 to load optical image stabilization firmware, see ffcf5bf8
+Note 0xc05000A0 - 0xc05000B0 are used for apparently similar transfers for other devices in ffc32830
+*/
+static unsigned int eos_handle_A1100_is_init(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    unsigned int ret = 0;
+    const char *msg = NULL;
+
+    static uint32_t xfer_addr;
+    static uint32_t xfer_size;
+    static uint32_t unk1;
+    static int init_done = 0;
+    switch(address & 0xFF)
+    {
+        case 0x40:
+            msg = "Transfer memory address";
+            MMIO_VAR(xfer_addr);
+            break;
+        case 0x44:
+            msg = "Transfer byte count";
+            MMIO_VAR(xfer_size);
+            break;
+        case 0x50:
+            msg = "Unk1";
+            MMIO_VAR(unk1);
+            break;
+        case 0x58:
+            if(init_done) {
+                msg = "ISInit unk2 after done";
+            } else if (unk1 == 0x25 && xfer_addr && xfer_size) {
+                msg = "ISInit unk2 trigger int";
+                // int that releases semaphore 0x55a4 in ffcf5bf8, unclear whether actually
+                // triggered by this transfer in real firmware
+                // this int is also triggered from eos_handle_A1100_is_com, but only later
+                eos_trigger_int(0x51, 0);
+                init_done = 1;
+            } else {
+                msg = "ISInit unk2 trigger not init";
+            }
+            break;
+    }
+    io_log("IS", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 unsigned int eos_handle_cfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     unsigned int ret = 0;
     const char *msg = NULL;
+
+    // A1100 uses 0xc0500040 - 58, related to IS system, see ffcf5bf8
+    if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0
+        && address >= 0xc0500040 &&  address <= 0xc0500058) {
+        return eos_handle_A1100_is_init(parm,address,type,value);
+    }
 
     switch(address & 0x1F)
     {
