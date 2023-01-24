@@ -5653,8 +5653,14 @@ unsigned int eos_handle_display(unsigned int parm, unsigned int address, unsigne
     {
         case 0x014:
         {
+            // A1100 expects 0x4 or 0x8, 0x4 appears to be normal case in INT 0x68 handler ffc2ba64
+            // avoids assert from TakeSemaphoreStrictly(0x2680) in ffc404e8
+            if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+                ret = 0x4;
+            } else {
             /* 5D3 1.2.3: expects 0x10 for built-in LCD and 0x4 for HDMI? */
-            ret = 0x10;
+                ret = 0x10;
+            }
             break;
         }
 
