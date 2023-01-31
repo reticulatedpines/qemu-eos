@@ -1420,8 +1420,8 @@ static void eos_update_display(void *parm)
     int height_multiplier = 1;
     int out_height = height;
 
-    // VxWorks models have 720x240 screens stretched vertically
-    if (s->model->digic_version < 4)
+    // VxWorks models and some PowerShots have 720x240 screens stretched vertically
+    if (s->model->digic_version < 4 || strcmp(s->model->name, MODEL_NAME_A1100) == 0)
     {
         height_multiplier = 2;
         height /= height_multiplier;
@@ -5798,7 +5798,11 @@ unsigned int eos_handle_display(unsigned int parm, unsigned int address, unsigne
                 int entry = (((address & 0xFFF) - 0x400) / 4) % 0x100;
                 process_palette_entry(value, &eos_state->disp.palette_8bit[entry], entry, &msg);
                 eos_state->disp.is_4bit = 0;
-                eos_state->disp.bmp_pitch = 960;
+                if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+                    eos_state->disp.bmp_pitch = 720;
+                } else {
+                    eos_state->disp.bmp_pitch = 960;
+                }
             }
             break;
     }
