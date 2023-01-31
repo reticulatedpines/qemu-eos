@@ -4544,6 +4544,90 @@ unsigned int eos_handle_digic_timer(unsigned int parm, unsigned int address, uns
     return ret;
 }
 
+/*
+wrapper for sd_do_command to handle special cases. Currently, A1100
+*/
+static int eos_sd_do_command(SDState *sd, SDRequest *req, uint8_t *response)
+{
+/*
+    A1100 expects to send at least two CMD55 (APP_CMD), ACMD41 (SD_SEND_OP_COND)
+    sequences at startup.
+    SD1stInit task ffce41b4 calls ffde26b0 to send CMD55, ffde278c to send ACMD41
+    Startup task ffce42d8 calls ffde27e0, which calls ffde26b0 to send CMD55, then
+    sends ACMD41
+    Qemu sd.c considers CMD55 and ACMD41 illegal after the 'ready' state is entered,
+    and with the parameters A1100 uses, the card enters 'ready' on the first
+    ACMD41. This causes sd.c to return an error result on the second CMD55, which in
+    turn causes the global SD error flag (0x2628 == 0) to be set in the Canon firmware,
+    which disables subsequent SD access and displays "Memory Card Error" on the screen
+    The workaround intercepts the extra CMD55, ACMD41 sequence without sending to the sd
+    code, and sends a canned response from the initial calls
+    Adjusting logic in sd.c might be preferable, but the correct logic is unclear,
+    and this avoids impact on other cameras
+    Other PowerShots of similar generation likely require the same workaround
+*/
+    if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+        static uint8_t last_acmd41_resp[20];
+        static uint8_t last_cmd55_resp[20];
+        static enum {
+            ACMD41_NONE,
+            ACMD41_GOT55,
+            ACMD41_GOT41,
+            ACMD41_IGNORE41,
+        } acmd41_state = ACMD41_NONE;
+        switch(acmd41_state) {
+            case ACMD41_NONE:
+                // first 55, send command and save response
+                if(req->cmd == 55) {
+                    acmd41_state = ACMD41_GOT55;
+                    int rlen = sd_do_command(sd, req, response);
+                    memcpy(last_cmd55_resp,response,sizeof(last_cmd55_resp));
+                    return rlen;
+                }
+                break;
+            case ACMD41_GOT55:
+                // first 41, send command and save response
+                if(req->cmd == 41) {
+                    acmd41_state = ACMD41_GOT41;
+                    int rlen = sd_do_command(sd, req, response);
+                    memcpy(last_acmd41_resp,response,sizeof(last_acmd41_resp));
+                    return rlen;
+                }
+                break;
+            case ACMD41_GOT41:
+                // 55 following 41, ignore and set to ignore next 41
+                // note this would break things if a *different* ACMD were sent immediately after 41
+                // but qemu would flag that as illegal anyway
+                if(req->cmd == 55) {
+                    acmd41_state = ACMD41_IGNORE41;
+                    memcpy(response,last_cmd55_resp,sizeof(last_cmd55_resp));
+                    return 4;
+                }
+                break;
+            case ACMD41_IGNORE41:
+                // 41 following ignored 55, ignore
+                // Note qemu did NOT instantly set the card to ready (bit 31=1, initialization complete)
+                // this would fail, since it would send the non-busy response. But then
+                // the whole workaround wouldn't be needed
+                if(req->cmd == 41) {
+                    // reset state. This limits to one extra 55/41 sequence, could drop back to GOT41 to
+                    // allow multiple, but not needed on A1100
+                    acmd41_state = ACMD41_NONE;
+                    memcpy(response,last_acmd41_resp,sizeof(last_acmd41_resp));
+                    return 4;
+                }
+                break;
+            default:
+                fprintf(stderr, "[EOS] invalid acmd41_state %d\n", acmd41_state);
+                assert(0);
+
+        }
+        // anything else, reset sequence and send normal command
+        acmd41_state = ACMD41_NONE;
+    }
+    return sd_do_command(sd, req, response);
+}
+
 /* based on pl181_send_command from hw/sd/pl181.c */
 #define SD_EPRINTF(fmt, ...) EPRINTF("[SDIO] ", EOS_LOG_SDCF, fmt, ## __VA_ARGS__)
 #define SD_DPRINTF(fmt, ...) DPRINTF("[SDIO] ", EOS_LOG_SDCF, fmt, ## __VA_ARGS__)
@@ -4566,7 +4650,7 @@ static void sdio_send_command(SDIOState *sd)
     request.cmd = cmd;
     request.arg = param;
     SD_DPRINTF("Command %d %08x\n", request.cmd, request.arg);
-    rlen = sd_do_command(sd->card, &request, response+4);
+    rlen = eos_sd_do_command(sd->card, &request, response+4);
     if (rlen < 0)
         goto error;
 
