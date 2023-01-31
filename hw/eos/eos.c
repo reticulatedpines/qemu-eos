@@ -547,7 +547,7 @@ EOSRegionHandler eos_handlers[] =
     { "SIO9",         0xC0820900, 0xC08209FF, eos_handle_sio, 9 },
     { "SIO10",        0xC0820A00, 0xC0820AFF, eos_handle_sio, 10 },
     // Digic 2-5 P&S ADC
-    { "ADC",          0xC0900040, 0xC09000B0, eos_handle_adc, 1 },
+    { "ADC",          0xC0900040, 0xC09000D4, eos_handle_adc, 1 },
     { "MREQ",         0xC0203000, 0xC02030FF, eos_handle_mreq, 0 },
     { "DMA1",         0xC0A10000, 0xC0A100FF, eos_handle_dma, 1 },
     { "DMA2",         0xC0A20000, 0xC0A200FF, eos_handle_dma, 2 },
@@ -3605,6 +3605,9 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
                     // value seen on a540, 2xAA battery at 2.6v. LiPo camera at 4.2 = 0x2033c/
                     ret = 0x2024f;
                 }
+            } else if (off == 0xd4) {
+                msg = "ADC ready?";
+                ret = 0x0ffe000a; // A1100 ffc2dd28, related to ADC setup, avoid long busy loop polling MMIO. Value from D10
             }
         }
     }
