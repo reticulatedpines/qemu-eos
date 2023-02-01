@@ -259,6 +259,8 @@ struct eos_model_desc eos_model_list[] = {
         .current_task_addr      = 0x195C,
         .sd_driver_interrupt    = 0x4b, // gdb log "SdConInt"
         .sd_dma_interrupt       = 0x32, // gdb log "SdDmaInt"
+        .rtc_cs_register        = 0xC0223010, // different from other cams, 0x800 set seems to indicate RTC selected
+                                              // set in ffc2d6d0, cleared in ffc2d700
     },
 /*************************** DIGIC V **********************************/
     {

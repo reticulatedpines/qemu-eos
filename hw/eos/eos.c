@@ -1783,6 +1783,22 @@ static void *eos_init_cpu(void)
         /* fixme: RTC protocol unknown, but returning 0xC everywhere brings the GUI */
         eos_state->rtc.regs[0x00] = 0xC;
     }
+    else if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0)
+    {
+        // values observed on D10, in response to command 2 which has similar code
+        // See A1100 ffc2f1d4 D10 ff845960
+        eos_state->rtc.regs[0x00] = 0x23;   /* year (BCD since 2000) */
+        eos_state->rtc.regs[0x01] = 0x01;   /* month (BCD) */
+        eos_state->rtc.regs[0x02] = 0x31;   /* day (BCD) */
+        eos_state->rtc.regs[0x03] = 0x02;   /* unk */
+        eos_state->rtc.regs[0x04] = 0x58;   /* hour (BCD) | 0x40 */
+        eos_state->rtc.regs[0x05] = 0x28;   /* minute (BCD) */
+        eos_state->rtc.regs[0x06] = 0x00;   /* second (BCD) */
+        eos_state->rtc.regs[0x06] = 0; // unused
+        eos_state->rtc.regs[0x07] = 0;
+        eos_state->rtc.regs[0x0E] = 0;
+        eos_state->rtc.regs[0x0F] = 0;
+    }
 
     int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     eos_state->interrupt_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, eos_interrupt_timer_cb, eos_state);
@@ -3044,8 +3060,16 @@ static int eos_handle_rtc_cs(unsigned int parm, unsigned int address, unsigned c
 
     if (type & MODE_WRITE)
     {
-        if ((value & 0x06) == 0x06 ||
-            (value & 0x0100000) == 0x100000)
+        unsigned int cs_active;
+        if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0)
+        {
+            cs_active = ((value & 0x800) == 0x800);
+        }
+        else
+        {
+            cs_active = ((value & 0x06) == 0x06 || (value & 0x0100000) == 0x100000);
+        }
+        if(cs_active)
         {
             msg = "[RTC] CS set";
             eos_state->rtc.transfer_format = RTC_READY;
@@ -3160,6 +3184,22 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
 
     switch (address & 0xFFFF)
     {
+        case 0x0068:
+            // RTC related, seems to be set *after* setup register so not usable as rtc_cs
+            if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+                if(type & MODE_WRITE) {
+                    if(value == 0x46) {
+                        msg = "RTC com on";
+                    } else if (value == 0x44) {
+                        msg = "RTC com off";
+                    } else {
+                        msg = "RTC com??";
+                    }
+                } else {
+                    msg = "RTC com??";
+                }
+            }
+            break;
         case 0xCB6C: /* 5D3/6D expect this one to be 0x10 in bootloader (6D:FFFF0544) */
             msg = "5D3/6D expected to be 0x10";
             ret = 0x10;
@@ -4447,6 +4487,79 @@ static unsigned int eos_handle_A1100_IS_com(unsigned int parm, unsigned int addr
     return ret;
 }
 
+static unsigned int eos_handle_A1100_rtc(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    unsigned int ret = 0;
+    char msg[100] = "";
+
+    static unsigned int last_sio_txdata = 0;
+    static unsigned int last_sio_rxdata = 0;
+    static unsigned int last_sio_setup1 = 0;
+    static unsigned int last_sio_setup2 = 0;
+    static unsigned int last_sio_setup3 = 0;
+    unsigned int pc = CURRENT_CPU->env.regs[15];
+
+    switch(address & 0xFF)
+    {
+        case 0x04:
+            if((type & MODE_WRITE) && (value & 1))
+            {
+                uint8_t cmd = (last_sio_txdata >> 4) & 0x7;
+                snprintf(msg, sizeof(msg), "Transmit: CMD 0x%X 0x%08X, setup 0x%08X 0x%08X 0x%08X PC: 0x%08X",cmd, last_sio_txdata, last_sio_setup1, last_sio_setup2, last_sio_setup3, pc);
+                // command 2 reads back 7 bytes with date / time, called from A1100 100c ff845960
+                // commands observed are 0,1,2,3,4,7 but only 2 appears needed to set clock
+                // and avoid date/time prompt
+                if(cmd == 2) {
+                    // issue command
+                    if(last_sio_setup1 & 0x80000000)
+                    {
+                        eos_state->rtc.current_reg = 0;
+                    }
+                    else  // fetch result
+                    {
+                        last_sio_rxdata = eos_state->rtc.regs[eos_state->rtc.current_reg];
+                        eos_state->rtc.current_reg++;
+                        eos_state->rtc.current_reg %= 7;
+                    }
+                }
+                else
+                {
+                    last_sio_rxdata = 0;
+                }
+            }
+            else
+            {
+                ret = 0;
+            }
+            break;
+
+        case 0x0C:
+            MMIO_VAR(last_sio_setup1);
+            break;
+
+        case 0x10:
+            MMIO_VAR(last_sio_setup2);
+            break;
+
+        case 0x14:
+            MMIO_VAR(last_sio_setup3);
+            break;
+
+        case 0x18:
+            snprintf(msg, sizeof(msg), "TX register");
+            MMIO_VAR(last_sio_txdata);
+            break;
+
+        case 0x1C:
+            snprintf(msg, sizeof(msg), "RX register");
+            MMIO_VAR(last_sio_rxdata);
+            break;
+    }
+
+    io_log("RTC", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     if ((address & 0xFFFFFF00) == 0xC0820400 && strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
@@ -4459,7 +4572,15 @@ unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned ch
         return eos_handle_sio_serialflash(parm, address, type, value);
     }
 
-    if (eos_state->rtc.transfer_format != RTC_INACTIVE)
+    // A1100 only treat SIO2 0xC08202** as RTC, unclear if other SIO could be active at same time
+    // SIO2 appears to be shared with something else referenced from AudioTsk and StartupImage tasks
+    if ((address & 0xFFFFFF00) == 0xC0820200 && strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+        if(eos_state->rtc.transfer_format != RTC_INACTIVE)
+        {
+            return eos_handle_A1100_rtc(parm, address, type, value);
+        }
+    }
+    else if (eos_state->rtc.transfer_format != RTC_INACTIVE)
     {
         /* RTC CS active? */
         return eos_handle_rtc(parm, address, type, value);
