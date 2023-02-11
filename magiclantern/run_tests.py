@@ -3,6 +3,7 @@
 import os
 import sys
 import argparse
+from datetime import datetime
 
 import ml_tests
 from ml_qemu.run import get_default_dirs
@@ -10,6 +11,7 @@ from ml_qemu.run import get_default_dirs
 def main():
     args = parse_args()
 
+    start_time = datetime.now()
     suite = ml_tests.test_suite.TestSuite(cams=args.cams,
                                           qemu_dir=args.qemu_build_dir,
                                           rom_dir=args.rom_dir,
@@ -32,20 +34,25 @@ def main():
             print(c)
 
     try:
-        suite.run_tests()
+        suite_result = suite.run_tests()
     except ml_tests.test_suite.TestSuiteError:
         # something was wrong in the overall test setup itself
         raise
 
     # output result summary, and exit with appropriate return code
     print("\nTest Summary:")
+    elapsed_time = (datetime.now() - start_time).total_seconds()
+    print("Elapsed time: %ds" % elapsed_time)
+    pass_suffix = "PASS" if suite_result else "FAIL"
+    print("Overall status: " + pass_suffix)
     any_failures = False
     status_strings = []
     for c in suite.cams:
-        total_tests = len(c.tests)
+        tests = [t for t in suite.finished_tests if t.cam.model == c.model]
+        total_tests = len(tests)
         passed_tests = 0
         failed_tests = 0
-        for t in c.tests:
+        for t in tests:
             if t.passed == True:
                 passed_tests += 1
             else:
@@ -62,8 +69,10 @@ def main():
     for s in status_strings:
         print(s)
 
-    if not any_failures:
+    if suite_result == True and any_failures == False:
         sys.exit(0)
+    elif suite_result == True and any_failures == True:
+        raise ValueError("suite_result True, any_failures True, shouldn't happen")
     sys.exit(-1)
 
 

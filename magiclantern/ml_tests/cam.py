@@ -3,6 +3,7 @@
 import os
 import hashlib
 
+from ml_qemu.run import get_cam_path
 
 class CamError(Exception):
     pass
@@ -97,6 +98,17 @@ class Cam(object):
         elif self.digic_version in [7, 8, 10]:
             self.code_rom_md5 = self.rom0_md5
 
+        # get platform/XXD/sd.qcow2 paths or fail
+        cam_path = get_cam_path(source_dir, cam)
+        self.sd_file = os.path.join(cam_path, "sd.qcow2")
+        self.cf_file = os.path.join(cam_path, "cf.qcow2")
+        if not os.path.exists(self.sd_file):
+            raise CamError("Could not open %s, have you run "
+                           "make disk_image for this cam?" % self.sd_file)
+        if not os.path.exists(self.cf_file):
+            raise CamError("Could not open %s, have you run "
+                           "make disk_image for this cam?" % self.cf_file)
+
         # set camera traits
         self.model = cam
         self.rom_dir = os.path.realpath(rom_dir)
@@ -108,19 +120,6 @@ class Cam(object):
         if self.is_powershot and self.is_eos:
             raise CamError("Cam shouldn't be Powershot and EOS! : %s" % cam)
 
-        self.tests = [] # A TestSuite will initialise this with valid tests
-
-    def run_tests(self):
-        all_tests_passed = True
-        for test in self.tests:
-            with test as t:
-                if not t.run():
-                    all_tests_passed = False
-                    if t.verbose:
-                        print(self.model + " FAIL: " + t.fail_reason)
-                    if self.fail_early:
-                        return False
-        return all_tests_passed
 
     def __repr__(self):
         s = "Model: %s\n" % self.model

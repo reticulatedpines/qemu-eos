@@ -2,10 +2,11 @@
 
 import abc
 import os
+import shutil
 import hashlib
 from time import sleep
 
-from ml_qemu.run import QemuRunner, get_cam_path
+from ml_qemu.run import QemuRunner
 
 
 class Test(abc.ABC):
@@ -46,11 +47,6 @@ class Test(abc.ABC):
         """
         self.cam = cam
 
-        # get default disk image paths, individual tests may override these
-        cam_path = get_cam_path(cam.source_dir, cam.model)
-        self.sd_file = os.path.join(cam_path, "sd.qcow2")
-        self.cf_file = os.path.join(cam_path, "cf.qcow2")
-
         self.qemu_dir = qemu_dir
         self.qemu_runner = None
         self.verbose = verbose
@@ -61,6 +57,24 @@ class Test(abc.ABC):
         self.vnc_display = ":" + str(self.vnc_port)
         self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
         self.output_top_dir = test_dir
+
+        # make a unique output dir per test, e.g.
+        # test_output/50D/MenuTest/
+        path_parts = [self.output_top_dir,
+                      self.cam.model,
+                      self.__class__.__name__]
+        self.output_dir = os.path.join(*path_parts)
+
+        # Get default disk image paths, set up for the copy to this test's
+        # output dir.  That happens in __enter__(), so, only works
+        # properly if we're invoked using "with".
+        #
+        # We copy the disk images to allow inspecting changed disk content
+        # if the test wants to do that.  It also allows running Qemu
+        # in parallel without disk conflicts.
+        self.sd_file = os.path.join(self.output_dir, "sd.qcow2")
+        self.cf_file = os.path.join(self.output_dir, "cf.qcow2")
+
         self.orig_dir = os.getcwd()
         self.expected_output_dir = os.path.join(self.orig_dir,
                                                 "expected_test_output",
@@ -76,28 +90,42 @@ class Test(abc.ABC):
     def return_failure(self, reason):
         self.passed = False
         self.fail_reason = self.__class__.__name__ + ": " + reason
+        print("FAIL: " + self.cam.model + "\n      " + self.fail_reason)
         if self.qemu_runner:
             self.qemu_runner.shutdown()
+        self.qemu_runner = None # needed to allow pickling, for sending back via multiprocessing Manager
         return False
 
     def return_success(self):
         if self.force_continue:
             # always fail if we're in debug mode
             self.passed = False
-            return False
+        if self.passed == True:
+            # shouldn't happen, suggests the test ran twice
+            self.passed = False
         else:
             self.passed = True
-            return True
+
+        if self.qemu_runner:
+            self.qemu_runner.shutdown()
+        self.qemu_runner = None
+        return self.passed
 
     def __enter__(self):
-        path_parts = [self.output_top_dir,
-                      self.cam.model,
-                      self.__class__.__name__]
-        self.output_dir = os.path.join(*path_parts)
         os.makedirs(self.output_dir)
+        shutil.copy(self.cam.sd_file, self.sd_file)
+        shutil.copy(self.cam.cf_file, self.cf_file)
         os.chdir(self.output_dir)
         return self
 
     def __exit__(self, *args):
+        if self.qemu_runner:
+            self.qemu_runner.shutdown()
+        self.qemu_runner = None
         os.chdir(self.orig_dir)
+
+    def __repr__(self):
+        return "Test: %s, %s, status: %s" % (self.cam.model,
+                                self.__class__.__name__,
+                                self.passed)
 

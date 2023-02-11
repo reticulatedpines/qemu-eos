@@ -2,6 +2,8 @@
 
 import os
 import sys
+import queue # only for queue.Empty
+import multiprocessing
 import time
 
 from . import test_group_names
@@ -11,6 +13,29 @@ from .log_test import LogTest
 
 class TestSuiteError(Exception):
     pass
+
+
+def test_worker(tests, q, verbose=False):
+    """
+    Takes a synchronised Manager list,
+    and a queue of indices into the list.
+
+    The queue is used to ensure only one worker
+    will perform a given test.
+    """
+    while True:
+        try:
+            i = q.get(block=False)
+        except queue.Empty:
+            return
+        test = tests[i]
+
+        print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__))
+
+        with test as t:
+            t.run()
+        # update the shared list so it has the result from the run
+        tests[i] = test
 
 
 class TestSuite(object):
@@ -44,6 +69,7 @@ class TestSuite(object):
         # TODO validate qemu dir
 
         self.fail_early = fail_early
+        self.verbose = verbose
 
         self.orig_dir = os.getcwd()
         if not test_output_dir:
@@ -77,6 +103,7 @@ class TestSuite(object):
         self.test_output_dir = test_output_sub_dir
 
         self.cams = []
+        self.early_failure_occured = False
         for c in cams:
             try:
                 self.cams.append(Cam(c, rom_dir, source_dir,
@@ -84,83 +111,143 @@ class TestSuite(object):
             except CamError as e:
                 print("FAIL: %s" % c)
                 print("      %s" % e)
+                self.early_failure_occured = True
 
-        # add appropriate tests to each cam
+        # create tests appropriate for each cam
+        job_ID = 1
+        self._tests = []
+        self.finished_tests = [] # populated by run_tests()
         for c in self.cams:
+            tests = []
             for t in test_names:
                 if t not in test_group_names:
                     raise TestSuiteError("Unexpected test name: %s" % t)
                 if t == "menu" and c.can_emulate_gui:
-                    c.tests.append(MenuTest(c, qemu_dir,
-                                            self.test_output_dir,
-                                            verbose=verbose,
-                                            force_continue=force_continue))
+                    tests.append(MenuTest(c, qemu_dir,
+                                          self.test_output_dir,
+                                          job_ID=job_ID,
+                                          verbose=verbose,
+                                          force_continue=force_continue))
                 if t == "log":
-                    c.tests.append(LogTest(c, qemu_dir,
-                                           self.test_output_dir,
-                                           verbose=verbose,
-                                           force_continue=force_continue))
+                    tests.append(LogTest(c, qemu_dir,
+                                         self.test_output_dir,
+                                         job_ID=job_ID,
+                                         verbose=verbose,
+                                         force_continue=force_continue))
+                job_ID += 1
 
-            if not c.tests:
+            if not tests:
                 print("WARN: Cam has no valid tests to run: %s" % c.model)
+            self._tests.extend(tests)
 
     def run_tests(self):
+        """
+        Using multiple worker processes, run the tests in the suite.
+        """
+
+        # We use a Manager to send copies of the Test objects,
+        # in an array, to a set of worker processes.
+        # These run and modify the objects, sending them back.
+        #
+        # A queue holds indices into the array, workers
+        # use this to avoid conflicts over work items.
+        test_index_queue = multiprocessing.Queue()
+        with multiprocessing.Manager() as manager:
+            managed_tests = manager.list(self._tests)
+
+            for i in range(len(self._tests)):
+                test_index_queue.put(i)
+
+            num_workers = os.cpu_count()
+            if num_workers > 1:
+                num_workers -= 1 # be friendly, keep a core free
+            if num_workers > len(self._tests):
+                num_workers = len(self._tests)
+            print("INFO: starting test suite, %d workers" % num_workers)
+            workers = []
+            for _ in range(num_workers):
+                worker = multiprocessing.Process(target=test_worker,
+                                                 args=(managed_tests,
+                                                       test_index_queue,
+                                                       self.verbose))
+                workers.append(worker)
+                worker.start()
+
+            # All jobs queued, some are running.
+            # Poll for worker process status.  This allows printing updates,
+            # and checking if any / all workers died
+            #
+            # TODO some kind of timeout handling
+            any_workers_alive = True
+            while any_workers_alive:
+                time.sleep(2)
+                any_workers_alive = False
+                for w in workers:
+                    if w.exitcode == None:
+                        any_workers_alive = True
+                        break
+
+            for w in workers:
+                w.join()
+
+            self.finished_tests = list(managed_tests)
+
+        return self._check_results()
+
+    def _check_results(self):
+        """
+        Inspect the results of a test suite run, mostly via
+        self.finished_tests.
+
+        Return False if any test failed for any cam,
+        otherwise True.  May raise TestSuiteError if "impossible"
+        results are encountered.
+        """
+        all_tests_passed = True
         for c in self.cams:
-            print("INFO: starting %s tests" % c.model)
+            tests = [t for t in self.finished_tests if t.cam.model == c.model]
+            orig_tests = [t for t in self._tests if t.cam.model == c.model]
 
-            # fail if any of these are true:
-            #   run_tests() reports failure
-            #   the cam had no tests
-            #   any test is in a failed state
-            #   any test is not in a passed state
-            #   any test has a fail_reason
+            failed_tests = {t for t in tests if t.passed == False}
+            passed_tests = {t for t in tests if t.passed == True}
+            unpassed_tests = {t for t in tests if t.passed != True}
+            fail_reason_tests = {t for t in tests if t.fail_reason}
 
-            result = c.run_tests()
-            failed_tests = [t for t in c.tests if t.passed == False]
-            unpassed_tests = [t for t in c.tests if t.passed != True]
-            fail_reason_tests = [t for t in c.tests if t.fail_reason]
-
-            if not result:
-                # at least one test failed
-                print("FAIL: %s" % c.model)
-                for t in [t for t in c.tests if not t.passed]:
-                    test_name = t.__class__.__name__
-                    print("      %s" % t.fail_reason)
-            elif not c.tests:
-                # no tests were defined, fail but don't raise
+            if not tests:
                 print("FAIL: %s" % c.model)
                 print("      No tests defined for this cam")
-            elif failed_tests:
-                # shouldn't happen, the first case should catch this
-                print("ERR : badly detected failure")
+                all_tests_passed = False
+            elif len(tests) != len(orig_tests):
+                print("ERR : unexpected number of finished tests")
                 print("FAIL: %s" % c.model)
-                for t in failed_tests:
-                    test_name = t.__class__.__name__
-                    print("      %s" % t.fail_reason)
-                raise TestSuiteError("badly detected failure, failed tests")
-            elif unpassed_tests:
-                # shouldn't happen, the first case should catch this
-                print("ERR : badly detected failure")
-                print("FAIL: %s" % c.model)
-                for t in unpassed_tests:
-                    test_name = t.__class__.__name__
-                    print("      %s" % t.fail_reason)
-                    print("      passed: %s" % t.passed)
-                    print("      passed type: %s" % type(t.passed))
-                raise TestSuiteError("badly detected failure, unpassed test")
-            elif fail_reason_tests:
-                # shouldn't happen, the first case should catch this
-                #
+                print("      queued %d, got %d finished" % (len(orig_tests), len(tests)))
+                all_tests_passed = False
+                raise TestSuiteError("unexpected number of finished tests")
+            elif fail_reason_tests - failed_tests:
+                # fail_reason without passed == False
                 # Can be a signal you forgot to "return self.return_failure()"
                 print("ERR : badly detected failure")
                 print("FAIL: %s" % c.model)
-                for t in fail_reason_tests:
-                    test_name = t.__class__.__name__
+                for t in fail_reason_tests - failed_tests:
+                    print(t)
                     print("      fail reason: %s" % t.fail_reason)
                     print("      fail reason type: %s" % type(t.fail_reason))
+                all_tests_passed = False
                 raise TestSuiteError("badly detected failure, fail reason tests")
-            else:
+            elif unpassed_tests - failed_tests:
+                # test.passed is neither True nor False, shouldn't happen
+                print("ERR : badly detected failure")
+                print("FAIL: %s" % c.model)
+                for t in (unpassed_tests - failed_tests):
+                    print(t)
+                    print("      %s" % t.fail_reason)
+                    print("      passed: %s" % t.passed)
+                    print("      passed type: %s" % type(t.passed))
+                all_tests_passed = False
+                raise TestSuiteError("badly detected failure, unpassed test")
+            elif len(passed_tests) == len(tests):
                 print("PASS: %s" % c.model)
+        return all_tests_passed
 
     def __enter__(self):
         os.chdir(self.test_output_dir)
