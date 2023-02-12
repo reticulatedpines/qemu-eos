@@ -50,6 +50,8 @@ def main():
     print("Overall status: " + pass_suffix)
     any_failures = False
     status_strings = []
+    for c in suite.early_failed_cams:
+        status_strings.append("FAIL: " + c + " [-/-]")
     for c in suite.cams:
         tests = [t for t in suite.finished_tests if t.cam.model == c.model]
         total_tests = len(tests)

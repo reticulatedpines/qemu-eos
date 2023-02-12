@@ -106,7 +106,7 @@ class TestSuite(object):
         self.test_output_dir = test_output_sub_dir
 
         self.cams = []
-        self.early_failure_occured = False
+        self.early_failed_cams = []
         for c in cams:
             try:
                 self.cams.append(Cam(c, rom_dir, source_dir,
@@ -114,7 +114,7 @@ class TestSuite(object):
             except CamError as e:
                 print("FAIL: %s" % c)
                 print("      %s" % e)
-                self.early_failure_occured = True
+                self.early_failed_cams.append(c)
 
         # create tests appropriate for each cam
         job_ID = 1
@@ -209,6 +209,8 @@ class TestSuite(object):
         results are encountered.
         """
         all_tests_passed = True
+        if self.early_failed_cams:
+            all_tests_passed = False
         for c in self.cams:
             tests = [t for t in self.finished_tests if t.cam.model == c.model]
             orig_tests = [t for t in self._tests if t.cam.model == c.model]
