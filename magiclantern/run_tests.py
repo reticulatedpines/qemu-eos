@@ -43,7 +43,10 @@ def main():
     print("\nTest Summary:")
     elapsed_time = (datetime.now() - start_time).total_seconds()
     print("Elapsed time: %ds" % elapsed_time)
-    pass_suffix = "PASS" if suite_result else "FAIL"
+    if suite_result == True:
+        pass_suffix = "PASS"
+    else:
+        pass_suffix = "FAIL"
     print("Overall status: " + pass_suffix)
     any_failures = False
     status_strings = []

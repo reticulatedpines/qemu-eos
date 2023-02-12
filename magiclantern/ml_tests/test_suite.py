@@ -4,7 +4,6 @@ import os
 import sys
 import queue # only for queue.Empty
 import multiprocessing
-import functools
 import time
 
 from . import test_group_names
@@ -253,6 +252,13 @@ class TestSuite(object):
                 raise TestSuiteError("badly detected failure, unpassed test")
             elif len(passed_tests) == len(tests):
                 print("PASS: %s" % c.model)
+            elif len(passed_tests) != len(tests):
+                # didn't pass all tests
+                all_tests_passed = False
+            else:
+                # because all_tests_passed starts as True, we want
+                # to be sure we can't fall through if something goes wrong
+                raise TestSuiteError("ERR : hit 'impossible' condition")
         return all_tests_passed
 
     def __enter__(self):
