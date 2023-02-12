@@ -5,6 +5,7 @@ import hashlib
 from time import sleep
 
 from . import test
+from . import locking_print
 from ml_qemu.run import QemuRunner
 
 
@@ -73,9 +74,10 @@ class LogTest(test.Test):
         ]
     }
 
-    def run(self):
+    def run(self, lock):
+        self.lock = lock
         if self.verbose:
-            print("LogTest starting on %s %s" %
+            locking_print("LogTest starting on %s %s" %
                   (self.cam.model, self.cam.code_rom_md5))
 
         if self.cam.model not in self.known_cams:
@@ -131,7 +133,7 @@ class LogTest(test.Test):
                 return self.return_success()
                 
 
-        #print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
         return self.return_failure("Not all expected lines found in Qemu output.  "
                                    "First missing line:\n%s\n" % expected_lines[i])
 

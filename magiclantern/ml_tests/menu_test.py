@@ -4,6 +4,7 @@ import os
 import hashlib
 
 from . import test
+from . import locking_print
 from ml_qemu.run import QemuRunner
 
 
@@ -68,9 +69,10 @@ class MenuTest(test.Test):
                 ],
                 }
 
-    def run(self):
+    def run(self, lock):
+        self.lock = lock
         if self.verbose:
-            print("MenuTest starting on %s %s" %
+            locking_print("MenuTest starting on %s %s" %
                   (self.cam.model, self.cam.code_rom_md5))
 
         if self.cam.model not in self.known_cams:
@@ -130,6 +132,6 @@ class MenuTest(test.Test):
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
-        #print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
         return self.return_success()
 

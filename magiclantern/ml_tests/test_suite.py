@@ -4,18 +4,21 @@ import os
 import sys
 import queue # only for queue.Empty
 import multiprocessing
+import functools
 import time
 
 from . import test_group_names
+from . import locking_print
 from .cam import Cam, CamError
 from .menu_test import MenuTest
 from .log_test import LogTest
+
 
 class TestSuiteError(Exception):
     pass
 
 
-def test_worker(tests, q, verbose=False):
+def test_worker(tests, q, lock, verbose=False):
     """
     Takes a synchronised Manager list,
     and a queue of indices into the list.
@@ -30,10 +33,11 @@ def test_worker(tests, q, verbose=False):
             return
         test = tests[i]
 
-        print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__))
+        locking_print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__),
+                      lock)
 
         with test as t:
-            t.run()
+            t.run(lock)
         # update the shared list so it has the result from the run
         tests[i] = test
 
@@ -165,10 +169,12 @@ class TestSuite(object):
                 num_workers = len(self._tests)
             print("INFO: starting test suite, %d workers" % num_workers)
             workers = []
+            lock = multiprocessing.Lock()
             for _ in range(num_workers):
                 worker = multiprocessing.Process(target=test_worker,
                                                  args=(managed_tests,
                                                        test_index_queue,
+                                                       lock,
                                                        self.verbose))
                 workers.append(worker)
                 worker.start()

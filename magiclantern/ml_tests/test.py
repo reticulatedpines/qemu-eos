@@ -6,6 +6,7 @@ import shutil
 import hashlib
 from time import sleep
 
+from . import locking_print
 from ml_qemu.run import QemuRunner
 
 
@@ -34,6 +35,7 @@ class Test(abc.ABC):
                  }
 
     def __init__(self, cam, qemu_dir, test_dir, job_ID=0,
+                 lock=None,
                  verbose=False, force_continue=False):
         """
         The force_continue flag makes tests try and do as much as possible
@@ -46,6 +48,9 @@ class Test(abc.ABC):
         break things by having all tests erroneously pass.
         """
         self.cam = cam
+
+        # allows synchronising print() between parallel workers
+        self.lock = lock
 
         self.qemu_dir = qemu_dir
         self.qemu_runner = None
@@ -84,13 +89,14 @@ class Test(abc.ABC):
         self.fail_reason = None
 
     @abc.abstractmethod
-    def run(self):
+    def run(self, lock):
         pass
 
     def return_failure(self, reason):
         self.passed = False
         self.fail_reason = self.__class__.__name__ + ": " + reason
-        print("FAIL: " + self.cam.model + "\n      " + self.fail_reason)
+        locking_print("FAIL: " + self.cam.model + "\n      " + self.fail_reason,
+                      self.lock)
         if self.qemu_runner:
             self.qemu_runner.shutdown()
         self.qemu_runner = None # needed to allow pickling, for sending back via multiprocessing Manager
@@ -123,6 +129,8 @@ class Test(abc.ABC):
             self.qemu_runner.shutdown()
         self.qemu_runner = None
         os.chdir(self.orig_dir)
+        self.lock = None # prevent serialising via Manager,
+                         # Locks are not compatible.
 
     def __repr__(self):
         return "Test: %s, %s, status: %s" % (self.cam.model,
