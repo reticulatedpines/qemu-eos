@@ -73,7 +73,8 @@ class MenuTest(test.Test):
         self.lock = lock
         if self.verbose:
             locking_print("MenuTest starting on %s %s" %
-                  (self.cam.model, self.cam.code_rom_md5))
+                  (self.cam.model, self.cam.code_rom_md5),
+                  lock)
 
         if self.cam.model not in self.known_cams:
             return self.return_failure("No tests known for cam: %s"
@@ -132,6 +133,6 @@ class MenuTest(test.Test):
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
-        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}", lock)
         return self.return_success()
 

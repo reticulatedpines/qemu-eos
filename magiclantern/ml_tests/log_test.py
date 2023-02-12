@@ -78,7 +78,8 @@ class LogTest(test.Test):
         self.lock = lock
         if self.verbose:
             locking_print("LogTest starting on %s %s" %
-                  (self.cam.model, self.cam.code_rom_md5))
+                  (self.cam.model, self.cam.code_rom_md5),
+                  lock)
 
         if self.cam.model not in self.known_cams:
             return self.return_failure("No tests known for cam: %s"
@@ -133,7 +134,7 @@ class LogTest(test.Test):
                 return self.return_success()
                 
 
-        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}")
+        #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}", lock)
         return self.return_failure("Not all expected lines found in Qemu output.  "
                                    "First missing line:\n%s\n" % expected_lines[i])
 
