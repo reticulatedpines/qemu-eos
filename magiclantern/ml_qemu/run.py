@@ -109,6 +109,7 @@ class QemuRunner:
                  cam,
                  unreliable_screencaps=False,
                  sd_file="", cf_file="",
+                 stdout="", stderr="",
                  monitor_socket_path="",
                  vnc_display="",
                  verbose=False,
@@ -139,9 +140,10 @@ class QemuRunner:
 
         self.verbose = verbose
 
-        # later, in __enter__, we attach temp files to these
-        self.stdout = None
-        self.stderr = None
+        # in __enter__, we attach files to these,
+        # if None, these are temp files
+        self.stdout = stdout
+        self.stderr = stderr
 
         # Some cams have glitchy displays which we must work around
         self.unreliable_screencaps = unreliable_screencaps
@@ -192,8 +194,14 @@ class QemuRunner:
         else:
             # capture stdout and stderr, this makes it quiet,
             # and allows processing the output.
-            self.stdout = tempfile.TemporaryFile()
-            self.stderr = tempfile.TemporaryFile()
+            if self.stdout:
+                self.stdout = open(self.stdout, "wb+")
+            else:
+                self.stdout = tempfile.TemporaryFile()
+            if self.stderr:
+                self.stderr = open(self.stderr, "wb+")
+            else:
+                self.stderr = tempfile.TemporaryFile()
             kwargs["stdout"] = self.stdout
             kwargs["stderr"] = self.stderr
         self.qemu_process = subprocess.Popen(self.qemu_command,
