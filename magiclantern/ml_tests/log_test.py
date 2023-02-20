@@ -103,6 +103,7 @@ class LogTest(test.Test):
                         sd_file=self.sd_file, cf_file=self.cf_file,
                         stdout=os.path.join(self.output_dir, "qemu.stdout"),
                         stderr=os.path.join(self.output_dir, "qemu.stderr"),
+                        serial_out=os.path.join(self.output_dir, "qemu.serial"),
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display,
                         verbose=False) as self.qemu_runner:
@@ -123,17 +124,19 @@ class LogTest(test.Test):
             if stdout_text:
                 return self.return_failure("Stdout was non-empty.  Content: \n\n" + stdout_text)
 
+            # TODO do something with stderr
+
             # do a single pass through the logged output, checking for our strings
-            q.stderr.seek(0)
-            expected_lines_len = len(expected_lines)
-            i = 0
-            for line in q.stderr.readlines():
-                if expected_lines[i] in line.decode():
-                    i += 1
-                    if i >= expected_lines_len:
-                        break
-            if i >= expected_lines_len:
-                return self.return_success()
+            with open(q.serial_out, "r") as f:
+                expected_lines_len = len(expected_lines)
+                i = 0
+                for line in f.readlines():
+                    if expected_lines[i] in line:
+                        i += 1
+                        if i >= expected_lines_len:
+                            break
+                if i >= expected_lines_len:
+                    return self.return_success()
                 
 
         #locking_print(f"PASS: {self.__class__.__name__}, {self.cam.model}", lock)

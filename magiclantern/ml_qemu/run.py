@@ -110,6 +110,7 @@ class QemuRunner:
                  unreliable_screencaps=False,
                  sd_file="", cf_file="",
                  stdout="", stderr="",
+                 serial_out="",
                  monitor_socket_path="",
                  vnc_display="",
                  verbose=False,
@@ -162,6 +163,13 @@ class QemuRunner:
             self.qemu_command.extend(["-vnc", vnc_display])
         else:
             self.vnc_client = None
+
+        # We can instruct qemu to redirect serial output to file.
+        # This changes stdout since it's no longer going there, but
+        # allows clean comparison of only serial output.
+        self.serial_out = serial_out
+        if serial_out:
+            self.qemu_command.extend(["-serial",  "file:" + str(serial_out)])
 
         self.gdb_port = gdb_port
         if gdb_port:
