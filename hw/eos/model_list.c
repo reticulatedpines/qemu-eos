@@ -404,6 +404,7 @@ struct eos_model_desc eos_model_list[] = {
     {
         .name                   = MODEL_NAME_100D,
         .digic_version          = 5,
+        .rom0_size              = 0x01000000,   /* 16MB */
         .ram_size               = 0x10000000,   /* 256MB */
         .current_task_addr      = 0x652AC,
         .serial_flash_size      = 0x1000000,
