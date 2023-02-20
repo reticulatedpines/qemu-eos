@@ -95,6 +95,8 @@ class MenuTest(test.Test):
                         self.cam.model,
                         unreliable_screencaps=self.cam.unreliable_screencaps,
                         sd_file=self.sd_file, cf_file=self.cf_file,
+                        stdout=os.path.join(self.output_dir, "qemu.stdout"),
+                        stderr=os.path.join(self.output_dir, "qemu.stderr"),
                         monitor_socket_path=self.qemu_monitor_path,
                         vnc_display=self.vnc_display,
                         verbose=self.verbose) as self.qemu_runner:
