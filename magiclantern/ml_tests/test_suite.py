@@ -36,7 +36,12 @@ def test_worker(tests, q, lock, verbose=False):
                       lock)
 
         with test as t:
-            t.run(lock)
+            try:
+                t.run(lock)
+            except TimeoutError:
+                locking_print("FAIL: timeout during test, %s, %s"
+                              % (test.cam.model, test.__class__.__name__),
+                              lock)
         # update the shared list so it has the result from the run
         tests[i] = test
 

@@ -129,6 +129,7 @@ class QemuRunner:
         # FIXME make this a class property, can't remember syntax right now
         self.screen_cap_prefix = "test_"
         self.screen_cap_counter = 0
+        self.screen_cap_name = None
         if monitor_socket_path:
             self.monitor_socket_path = monitor_socket_path
         else:
@@ -198,6 +199,8 @@ class QemuRunner:
                   "stdin":subprocess.PIPE}
         if self.verbose:
             # don't redirect stdout stderr, just spam console
+            self.stdout = None
+            self.stderr = None
             pass
         else:
             # capture stdout and stderr, this makes it quiet,
@@ -222,6 +225,8 @@ class QemuRunner:
         if self.vnc_display:
             try:
                 self.vnc_client = vncdotool.api.connect(self.vnc_display)
+                self.vnc_client.timeout = 6 # for use with e.g. expectScreen(),
+                                            # throws TimeoutError
             except Exception as e:
                 self._cleanup()
                 raise(e)
@@ -262,6 +267,7 @@ class QemuRunner:
             self.stderr.close()
             self.stderr = None
         if self.vnc_client:
+            self.vnc_client.timeout = None
             self.vnc_client.disconnect()
         try:
             os.remove(self.monitor_socket_path)
@@ -318,7 +324,7 @@ class QemuRunner:
         sleep(delay)
         n = self.screen_cap_counter
         self.screen_cap_counter += 1
-        capture_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
+        self.screen_cap_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
 
         if self.unreliable_screencaps:
             # take screencaps until two match, or we hit the max
@@ -326,7 +332,7 @@ class QemuRunner:
             screencap_hashes = []
             match_found = False
             for i in range(max_attempts):
-                name = str(i) + capture_name
+                name = str(i) + self.screen_cap_name
                 self.vnc_client.captureScreen(name)
                 sleep(0.2) # too fast and we can capture the same glitchy screen and false match
                 with open(name, "rb") as f:
@@ -340,15 +346,15 @@ class QemuRunner:
             # The last capture will either be a match,
             # or there were no matches.  Make it have the "real" name,
             # comparison occurs against this file.
-            shutil.copy(name, capture_name)
+            shutil.copy(name, self.screen_cap_name)
 
             # delete temp files if we have a match,
             # otherwise keep for inspection
             if match_found:
                 for j in range(i + 1):
-                    os.remove(str(j) + capture_name)
+                    os.remove(str(j) + self.screen_cap_name)
         else:
-            self.vnc_client.captureScreen(capture_name)
+            self.vnc_client.captureScreen(self.screen_cap_name)
         sleep(0.1)
-        return capture_name
+        return self.screen_cap_name
 

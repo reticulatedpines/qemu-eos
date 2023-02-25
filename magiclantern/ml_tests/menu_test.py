@@ -90,6 +90,7 @@ class MenuTest(test.Test):
 
         key_sequence = self.qemu_key_sequences[self.cam.code_rom_md5]
 
+
         # invoke qemu and control it to run the test
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
                         self.cam.model,
@@ -101,6 +102,23 @@ class MenuTest(test.Test):
                         vnc_display=self.vnc_display,
                         verbose=self.verbose) as self.qemu_runner:
             q = self.qemu_runner
+
+            # Let's try some filthy hacking.  For unknown reasons,
+            # framebufferUpdateRequest(incremental=1), called internally as
+            # part of expectScreen(), causes the screen compare to always fail.
+            # That param is not exposed as part of expectScreen().
+            # Monkey patch the function with a wrapper that forces incremental=0.
+            #
+            # Getting to the actual function is its own special joy, it
+            # is quite indirect.
+            def _fbReplacer(obj, x=0, y=0, width=None, height=None, incremental=0):
+                # the following will get called as a method, therefore passing self implicitly
+                obj._framebufferUpdateRequest(x=x, y=y, width=width, height=height, incremental=0)
+
+            parent = q.vnc_client.factory.protocol
+            parent._framebufferUpdateRequest = parent.framebufferUpdateRequest
+            parent.framebufferUpdateRequest = _fbReplacer
+
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
                 delay = 0.3
@@ -110,28 +128,31 @@ class MenuTest(test.Test):
                     # menu transitions are much slower than others
                     delay = 5
                     k = k.split()[-1]
-                capture_filename = q.key_press(k, delay=delay)
-                capture_filepath = os.path.join(self.output_dir, capture_filename)
-                expected_hash = 0
-                with open(capture_filepath, "rb") as f:
-                    test_hash = hashlib.md5(f.read()).hexdigest()
+                q.key_press(k, delay=delay)
+                expected_output_path = os.path.join(self.expected_output_dir,
+                                                    q.screen_cap_name)
                 try:
-                    expected_output_path = os.path.join(self.expected_output_dir,
-                                                        capture_filename)
-                    with open(expected_output_path, "rb") as f:
-                        expected_hash = hashlib.md5(f.read()).hexdigest()
+                    q.vnc_client.expectScreen(expected_output_path, maxrms=0.0)
                 except FileNotFoundError:
                     if self.force_continue:
                         pass
                     else:
                         return self.return_failure("Missing expected output file: %s"
                                                    % expected_output_path)
-                if test_hash != expected_hash:
+                except TimeoutError:
+                    # vncdotool api object can throw this if its timeout property is set,
+                    # we do this in QemuRunner.
+                    #
+                    # This means we never saw the right screen, the best we can do to help
+                    # debug is save the last known content.
+                    fail_name = "fail_" + q.screen_cap_name
+                    q.vnc_client.screen.save(fail_name)
                     if self.force_continue:
                         pass
                     else:
-                        return self.return_failure("Mismatched hash for file '%s', expected %s, got %s"
-                                                   % (capture_filename, expected_hash, test_hash))
+                        return self.return_failure("Qemu screen never matched against "
+                                                   "expected result file '%s'\n, check '%s'"
+                                                   % (expected_output_path, fail_name))
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()
