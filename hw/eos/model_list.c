@@ -505,6 +505,9 @@ struct eos_model_desc eos_model_list[] = {
         .name                   = MODEL_NAME_7D2,
         .digic_version          = 6,
         .ram_size               = 0x20000000,   /* 512MB */
+        .ram_extra_addr[1]      = 0x82100000, // odd early mem copy to some device, I guess.
+                                              // 200D also has a similar pattern.
+        .ram_extra_size[1]      = 0x00100000,
         .current_task_addr      = 0x28568,
         .card_led_address       = 0xD20B0C34,
         .ram_manufacturer_id    = 0x14000101,
@@ -601,7 +604,8 @@ struct eos_model_desc eos_model_list[] = {
         .name                   = MODEL_NAME_200D,
         .digic_version          = 7,
         .ram_size               = 0x20000000,   /* 512MB */
-        .ram_extra_addr[1]      = 0x82100000,
+        .ram_extra_addr[1]      = 0x82100000, // odd early mem copy to some device, I guess.
+                                              // 7D2 also has a similar pattern.
         .ram_extra_size[1]      = 0x00100000,
         .card_led_address       = 0xD208016C,   /* WLAN LED 0xD2080190 */
         .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
