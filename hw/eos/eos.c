@@ -3496,7 +3496,9 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
             if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0 ) {
                 uint32_t physw_mmio_bits[] = {
                     0x00000000, // unknown
-                    0x0000FF00, // unpressed state of D-pad, Menu, PRINT
+                    0x0001FF00, // 0xFF00 = unpressed state of D-pad, Menu, PRINT,
+                                // + 0x10000 unknown, avoids most keys disabled at startup by ffc11184
+                                // setting event 0x8000001a, checked in ffc5c918
                     0x000090F0, // unpressed state of zoom, shoot.
                                 // 0x1000 indicates video cable not connected
                                 // 0x8000 is battery / card door, must be set to boot (see ffc601cc)
