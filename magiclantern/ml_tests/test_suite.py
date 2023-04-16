@@ -12,6 +12,9 @@ from .cam import Cam, CamError
 from .menu_test import MenuTest
 from .log_test import LogTest
 
+import vncdotool
+from vncdotool import api
+
 
 class TestSuiteError(Exception):
     pass
@@ -25,25 +28,49 @@ def test_worker(tests, q, lock, verbose=False):
     The queue is used to ensure only one worker
     will perform a given test.
     """
-    while True:
-        try:
-            i = q.get(block=False)
-        except queue.Empty:
-            return
-        test = tests[i]
-
-        locking_print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__),
-                      lock)
-
-        with test as t:
+    try:
+        while True:
             try:
-                t.run(lock)
-            except TimeoutError:
-                locking_print("FAIL: timeout during test, %s, %s"
-                              % (test.cam.model, test.__class__.__name__),
-                              lock)
-        # update the shared list so it has the result from the run
-        tests[i] = test
+                i = q.get(block=False)
+            except queue.Empty:
+                # This occurs, despite the queue being populated in one place,
+                # before any workers are started.  Queues are more strongly async
+                # than I expected?  Wait for another item to be available.
+                time.sleep(0.2)
+                continue
+
+            if i is None:
+                break # sentinel / poison pill for this worker, we are done
+
+            test = tests[i]
+
+            locking_print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__),
+                          lock)
+
+            with test as t:
+                try:
+                    t.run(lock)
+                except TimeoutError:
+                    locking_print("FAIL: timeout during test, %s, %s"
+                                  % (test.cam.model, test.__class__.__name__),
+                                  lock)
+
+            locking_print("INFO: %s finished %s" % (test.cam.model, test.__class__.__name__),
+                          lock)
+            # update the shared list so it has the result from the run
+            tests[i] = test
+    finally:
+        # vncdotool uses Twisted, and doesn't properly manage global
+        # resources created by Twisted.  Our QemuRunner class, when it
+        # connects to Qemu VNC server, triggers this to occur via api.connect().
+        #
+        # We must do api.shutdown() before exit, or everything hangs, see
+        # https://github.com/sibson/vncdotool/issues/255
+        #
+        # But we must only do it once per worker process, not per test,
+        # or we get twisted.internet.error.ReactorNotRestartable
+        # when we try to use a VNC client for the next test.
+        vncdotool.api.shutdown()
 
 
 class TestSuite(object):
@@ -159,8 +186,11 @@ class TestSuite(object):
         #
         # A queue holds indices into the array, workers
         # use this to avoid conflicts over work items.
-        test_index_queue = multiprocessing.Queue()
+
+        mp_context = multiprocessing.get_context("fork")
         with multiprocessing.Manager() as manager:
+            test_index_queue = mp_context.Queue()
+
             managed_tests = manager.list(self._tests)
 
             for i in range(len(self._tests)):
@@ -171,15 +201,22 @@ class TestSuite(object):
                 num_workers -= 1 # be friendly, keep a core free
             if num_workers > len(self._tests):
                 num_workers = len(self._tests)
+
+            for _ in range(num_workers):
+                test_index_queue.put(None) # sentinel value, checking for queue.Empty exception
+                                           # is supposed to be unreliable.  I suspect it's fine
+                                           # here because we only queue items once, and it's
+                                           # before any workers start.  Does no harm though.
+
             print("INFO: starting test suite, %d workers" % num_workers)
             workers = []
-            lock = multiprocessing.Lock()
+            lock = mp_context.Lock()
             for _ in range(num_workers):
-                worker = multiprocessing.Process(target=test_worker,
-                                                 args=(managed_tests,
-                                                       test_index_queue,
-                                                       lock,
-                                                       self.verbose))
+                worker = mp_context.Process(target=test_worker,
+                                            args=(managed_tests,
+                                            test_index_queue,
+                                            lock,
+                                            self.verbose))
                 workers.append(worker)
                 worker.start()
 
