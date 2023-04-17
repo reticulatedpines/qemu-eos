@@ -3583,6 +3583,7 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
                 }
             }
         }
+        // digic 2 - 5 P&S style
         else if (parm == 1)
         {
             unsigned int off = (address & 0xFF);
@@ -3601,8 +3602,8 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
                     uint32_t adc_values[] = {
                        0,   // channel  0 0xc0900040 0 0x0
                        1,   // channel  1 0xc0900042 1 0x1
-    //                   803, // channel  2 0xc0900044 803 0x323 < vbat ~4.037v
-                       497, // value from A540 ~2.215v (2x AA battery cam like A1100)
+    //                   803, // channel  2 0xc0900044 803 0x323 < vbat ~4.037v (from LiPo battery D10)
+                       497, // channel  2 value from A540 ~2.215v (2x AA battery cam like A1100)
                        471, // channel  3 0xc0900046 471 0x1d7 < tccd ~15c
                        448, // channel  4 0xc0900048 448 0x1c0 < topt ~13c
                        422, // channel  5 0xc090004a 422 0x1a6 < tbat ~ 17c
@@ -3622,7 +3623,7 @@ unsigned int eos_handle_adc(unsigned int parm, unsigned int address, unsigned ch
                 msg = "bat voltage";
                 if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
                     // avoids bad return value from ffc106ec, related to battery
-                    // value seen on a540, 2xAA battery at 2.6v. LiPo camera at 4.2 = 0x2033c/
+                    // value seen on a540, 2xAA battery at 2.6v. LiPo camera at 4.2 = 0x2033c
                     ret = 0x2024f;
                 }
             } else if (off == 0xd4) {
