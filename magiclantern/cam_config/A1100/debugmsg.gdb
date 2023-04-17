@@ -350,7 +350,9 @@ end
 # the key used to start the camera is unknown
 # In emulation, the firmware errors in shooting mode because lens hardware
 # is not emulated.
-b *0x34e5bc
+# this function isn't related to the value, it's just called between where CHDK
+# sets the incorrect value and where the value is used
+b *0xFFC090B4
 commands
  set MEM(0x2234) = 0x200000
  c
