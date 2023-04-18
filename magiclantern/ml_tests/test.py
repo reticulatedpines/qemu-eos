@@ -70,7 +70,7 @@ class Test(abc.ABC):
                       self.__class__.__name__]
         self.output_dir = os.path.join(*path_parts)
 
-        # Get default disk image paths, set up for the copy to this test's
+        # Get default disk image paths, set up for the copy to this tests
         # output dir.  That happens in __enter__(), so, only works
         # properly if we're invoked using "with".
         #

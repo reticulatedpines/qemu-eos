@@ -134,6 +134,7 @@ class QemuRunner:
             self.monitor_socket_path = monitor_socket_path
         else:
             self.monitor_socket_path = "qemu.monitor"
+        self.monitor_socket = None # init'd in __enter__ after Qemu comes up
 
         if boot:
             model = cam + ",firmware=boot=1"
@@ -222,6 +223,7 @@ class QemuRunner:
         # happening before Qemu is up.  There should be a more
         # graceful way.  Check status via monitor socket possibly?
         sleep(5.5)
+        # connect to VNC
         if self.vnc_display:
             try:
                 self.vnc_client = vncdotool.api.connect(self.vnc_display)
@@ -230,6 +232,10 @@ class QemuRunner:
             except Exception as e:
                 self._cleanup()
                 raise(e)
+
+        # connect to Qemu monitor
+        self.monitor_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.monitor_socket.connect(self.monitor_socket_path)
 
         # check it didn't die early
         if self.qemu_process.poll():
@@ -278,44 +284,34 @@ class QemuRunner:
         """
         Instructs Qemu to shut down the VM, via monitor socket.
         """
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        if self.monitor_socket:
+            pass
+        else:
+            return
+
+        # check if socket is connected
         try:
-            s.connect(self.monitor_socket_path)
-        except FileNotFoundError:
-            # can't connect to monitor, maybe qemu died already
-            sleep(2)
+            self.monitor_socket.getpeername()
+        except OSError:
+            # Getting here means socket existed, but not connected.
+            # This shouldn't happen and suggests the connection broke.
+            print("monitor socket not connected")
             return
 
         if force:
-            s.send(b"quit\n")
+            self.monitor_socket.send(b"quit\n")
         else:
-            s.send(b"system_powerdown\n")
+            self.monitor_socket.send(b"system_powerdown\n")
+        self.monitor_socket.close()
+        self.monitor_socket = None
         sleep(2)
 
-    def key_press(self, key, capture_screen=True, delay=0.3):
+    def key_press(self, key):
         """
-        Use VNC to press a key in the VM, and by default,
-        capture the screen a short time afterwards.
-
-        Returns filename (not path) of captured image.
+        Use Qemu monitor to press a key in the VM.
         """
-        try:
-            self.vnc_client.keyPress(key)
-        except vncdotool.api.VNCDoException as e:
-            # This is speculative code for debugging.  I've seen this
-            # exception very rarely and don't know the cause or trigger.
-            # It's a "connection refused" from VNC.
-            # Possibly sometimes qemu doesn't start fully in time,
-            # and the VNC port isn't up?
-            #
-            # I don't want to suppress all VNC exceptions, so I need
-            # to get more info here to understand cause.
-            print(self.vnc_client)
-            print(self.vnc_client.__dict__)
-            raise(e)
-        if capture_screen:
-            return self.capture_screen(delay)
-        return None
+        print("pressing: %s" % key)
+        self.monitor_socket.send(b"sendkey " + key.encode() + b"\n")
 
     def capture_screen(self, delay):
         """

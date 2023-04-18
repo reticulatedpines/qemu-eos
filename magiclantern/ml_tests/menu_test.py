@@ -31,41 +31,41 @@ class MenuTest(test.Test):
                  "left", "left", "left", "left", "left", "left", "left", "left", "left",
                  "left", "left", "left", "left", "left", "left", "left", "left", "left",
                  "left", "left", "left", # cycle through all menus
-                 "up", "up", "space", "down", "space", # sub-menu test, Tv/Av dial direction
-                 "right", "right", "right", "up", "space", "pgdn", "space", # ISO speed increment, wheel test
+                 "up", "up", "spc", "down", "spc", # sub-menu test, Tv/Av dial direction
+                 "right", "right", "right", "up", "spc", "pgdn", "spc", # ISO speed increment, wheel test
                 ],
                 "424545a5cfe10b1a5d8cefffe9fe5297": # 50D ROM1
                 ["m", "l", "l", "m", "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", # cycle through all menus
-                 "up", "up", "space", "down", "space", # check sub-menus work, turn beep off
-                 "right", "up", "up", "space", "pgdn", "space", # check wheel controls using Expo Comp sub-menu
+                 "up", "up", "spc", "down", "spc", # check sub-menus work, turn beep off
+                 "right", "up", "up", "spc", "pgdn", "spc", # check wheel controls using Expo Comp sub-menu
                 ],
                 "d266ce304585952fb3a05a9f6c304f2f": # 60D ROM1
                 ["m", "l", "l", "m", "left", "left", "left", "left",
                  "left", "left", "left", "left", "left", "left", "left", # cycle through all menus
-                 "up", "up", "space", "down", "space", # check sub-menus work; change auto rotation
-                 "left", "up", "up", "space", "pgup", "space", # check wheel controls on Play options
+                 "up", "up", "spc", "down", "spc", # check sub-menus work; change auto rotation
+                 "left", "up", "up", "spc", "pgup", "spc", # check wheel controls on Play options
                 ],
                 "e06a0e3919ac4d4ef609a864e937a5d3": # 100D ROM1
                 ["m", "wait l", "wait l", "m", # LV looks weird on this cam and takes a long time to activate
                  "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", "right",
                  "right", # cycle through all menus
-                 "up", "up", "up", "space", "down", "space", # check sub-menus; LCD auto off
+                 "up", "up", "up", "spc", "down", "spc", # check sub-menus; LCD auto off
                 ],
                 "f6c20df071b3514fa65f35dc5d71b484": # 700D ROM1
                 ["f1", "m", "right", "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", "right",
                  "right", # cycle through all menus.  This rom has no lens attached and LV usage seems to lock the cam.
-                 "space", "right", "space", # check sub-menus, change movie res
+                 "spc", "right", "spc", # check sub-menus, change movie res
                  # no wheel controls on this cam?  PgUp / PgDown are unmapped.
-                 "left", "space", "down", "down", "up", "space", # test up/down in grid display sub-menu
+                 "left", "spc", "down", "down", "up", "spc", # test up/down in grid display sub-menu
                 ],
                 "0a9fce1e4ef6d2ac2c3bc63eb96d3c34": # 500D ROM1
                 ["f1", "m", "l", "l", "m", # inital info screen, menu and LV
                  "left", "left", "left", "left", "left", "left", "left", "left", # cycle through menus
-                 "right", "space", "right", "space", # sub-menu test, change screen brightness
-                 "right", "space", "up", "up", "down", "space", # up/down test.  Unsure on sub-menu, it's Polish lang
+                 "right", "spc", "right", "spc", # sub-menu test, change screen brightness
+                 "right", "spc", "up", "up", "down", "spc", # up/down test.  Unsure on sub-menu, it's Polish lang
                 ],
                 }
 
@@ -112,7 +112,8 @@ class MenuTest(test.Test):
                     # menu transitions are much slower than others
                     delay = 5
                     k = k.split()[-1]
-                q.key_press(k, delay=delay)
+                q.key_press(k)
+                q.capture_screen(delay)
                 expected_output_path = os.path.join(self.expected_output_dir,
                                                     q.screen_cap_name)
                 try:
