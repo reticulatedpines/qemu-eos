@@ -47,7 +47,7 @@ class MenuTest(test.Test):
                  "left", "up", "up", "spc", "pgup", "spc", # check wheel controls on Play options
                 ],
                 "e06a0e3919ac4d4ef609a864e937a5d3": # 100D ROM1
-                ["m", "wait l", "wait l", "m", # LV looks weird on this cam and takes a long time to activate
+                ["m", "l", "l", "m", # LV looks weird on this cam and takes a long time to activate
                  "right", "right", "right", "right",
                  "right", "right", "right", "right", "right", "right",
                  "right", # cycle through all menus
@@ -98,60 +98,29 @@ class MenuTest(test.Test):
                         stdout=os.path.join(self.output_dir, "qemu.stdout"),
                         stderr=os.path.join(self.output_dir, "qemu.stderr"),
                         monitor_socket_path=self.qemu_monitor_path,
-                        vnc_display=self.vnc_display,
+                        display=None,
                         verbose=self.verbose) as self.qemu_runner:
             q = self.qemu_runner
 
             q.screen_cap_prefix = "menu_test_"
             for k in key_sequence:
-                delay = 0.3
-                if k.startswith("wait"):
-                    # prefixing a vnc key string with "wait " adds
-                    # extra delay before capturing the screen.  Some
-                    # menu transitions are much slower than others
-                    delay = 5
-                    k = k.split()[-1]
                 q.key_press(k)
-                q.capture_screen(delay)
-                expected_output_path = os.path.join(self.expected_output_dir,
-                                                    q.screen_cap_name)
                 try:
-                    q.vnc_client.expectScreen(expected_output_path, maxrms=0.0)
+                    if q.expect_screen(self.expected_output_dir, timeout=10):
+                        # saves last screen seen as q.screen_cap_name,
+                        # returns False if this didn't match expected
+                        pass
+                    elif self.force_continue:
+                        pass
+                    else:
+                        return self.return_failure("Qemu screen never matched against "
+                                                   "expected result file")
                 except FileNotFoundError:
                     if self.force_continue:
                         pass
                     else:
                         return self.return_failure("Missing expected output file: %s"
                                                    % expected_output_path)
-                except TimeoutError:
-                    # Sometimes, expectScreen() times out, and no screen is obtained.
-                    # I don't understand the cause yet.  Perhaps the vnc connection breaks,
-                    # although the client object still reports a valid connection.
-                    # Perhaps the keys are not received by Qemu, so the screen doesn't change?
-                    # (can check saved logs to prove / disprove this, haven't yet done so)
-                    # Perhaps incremental updates sometimes fail?
-                    #
-                    # Extremely oddly, while it occurs rarely, it always occurs on the same
-                    # key press / screen for a given cam (but not the same number of presses for all cams).
-                    #
-                    # This means we never saw the right screen, the best we can do to help
-                    # debug is save the last known content.
-                    print("failure after key: %s" % k)
-                    fail_name = "fail_" + q.screen_cap_name
-                    if q.vnc_client.screen is not None:
-                        q.vnc_client.screen.save(fail_name)
-                    else:
-                        print("vnc_client.screen was None")
-                    if self.force_continue:
-                        pass
-                    else:
-                        print(q.vnc_client)
-                        print(q.vnc_client.__dict__)
-                        print(q.vnc_client.protocol)
-                        print(q.vnc_client.protocol.__dict__)
-                        return self.return_failure("Qemu screen never matched against "
-                                                   "expected result file '%s'\n, check '%s'"
-                                                   % (expected_output_path, fail_name))
 
             # attempt clean shutdown via Qemu monitor socket
             q.shutdown()

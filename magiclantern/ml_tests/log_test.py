@@ -104,7 +104,7 @@ class LogTest(test.Test):
                         stderr=os.path.join(self.output_dir, "qemu.stderr"),
                         serial_out=os.path.join(self.output_dir, "qemu.serial"),
                         monitor_socket_path=self.qemu_monitor_path,
-                        vnc_display=self.vnc_display,
+                        display=None,
                         verbose=False) as self.qemu_runner:
             q = self.qemu_runner
 

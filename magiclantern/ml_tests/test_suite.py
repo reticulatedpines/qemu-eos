@@ -12,9 +12,6 @@ from .cam import Cam, CamError
 from .menu_test import MenuTest
 from .log_test import LogTest
 
-import vncdotool
-from vncdotool import api
-
 
 class TestSuiteError(Exception):
     pass
@@ -28,49 +25,36 @@ def test_worker(tests, q, lock, verbose=False):
     The queue is used to ensure only one worker
     will perform a given test.
     """
-    try:
-        while True:
+    while True:
+        try:
+            i = q.get(block=False)
+        except queue.Empty:
+            # This occurs, despite the queue being populated in one place,
+            # before any workers are started.  Queues are more strongly async
+            # than I expected?  Wait for another item to be available.
+            time.sleep(0.2)
+            continue
+
+        if i is None:
+            break # sentinel / poison pill for this worker, we are done
+
+        test = tests[i]
+
+        locking_print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__),
+                      lock)
+
+        with test as t:
             try:
-                i = q.get(block=False)
-            except queue.Empty:
-                # This occurs, despite the queue being populated in one place,
-                # before any workers are started.  Queues are more strongly async
-                # than I expected?  Wait for another item to be available.
-                time.sleep(0.2)
-                continue
+                t.run(lock)
+            except TimeoutError:
+                locking_print("FAIL: timeout during test, %s, %s"
+                              % (test.cam.model, test.__class__.__name__),
+                              lock)
 
-            if i is None:
-                break # sentinel / poison pill for this worker, we are done
-
-            test = tests[i]
-
-            locking_print("INFO: %s starting %s" % (test.cam.model, test.__class__.__name__),
-                          lock)
-
-            with test as t:
-                try:
-                    t.run(lock)
-                except TimeoutError:
-                    locking_print("FAIL: timeout during test, %s, %s"
-                                  % (test.cam.model, test.__class__.__name__),
-                                  lock)
-
-            locking_print("INFO: %s finished %s" % (test.cam.model, test.__class__.__name__),
-                          lock)
-            # update the shared list so it has the result from the run
-            tests[i] = test
-    finally:
-        # vncdotool uses Twisted, and doesn't properly manage global
-        # resources created by Twisted.  Our QemuRunner class, when it
-        # connects to Qemu VNC server, triggers this to occur via api.connect().
-        #
-        # We must do api.shutdown() before exit, or everything hangs, see
-        # https://github.com/sibson/vncdotool/issues/255
-        #
-        # But we must only do it once per worker process, not per test,
-        # or we get twisted.internet.error.ReactorNotRestartable
-        # when we try to use a VNC client for the next test.
-        vncdotool.api.shutdown()
+        locking_print("INFO: %s finished %s" % (test.cam.model, test.__class__.__name__),
+                      lock)
+        # update the shared list so it has the result from the run
+        tests[i] = test
 
 
 class TestSuite(object):

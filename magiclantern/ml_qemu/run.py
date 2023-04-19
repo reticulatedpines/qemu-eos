@@ -4,13 +4,15 @@ import os
 import shutil
 import argparse
 import subprocess
+import time
 from time import sleep
 import socket
 import hashlib
 import tempfile
 
-import vncdotool
-from vncdotool import api
+import PIL
+from PIL import Image
+
 
 class QemuRunnerError(Exception):
     pass
@@ -111,7 +113,7 @@ class QemuRunner:
                  stdout="", stderr="",
                  serial_out="",
                  monitor_socket_path="",
-                 vnc_display="",
+                 display="gtk",
                  verbose=False,
                  gdb_port=0,
                  boot=False,
@@ -128,7 +130,6 @@ class QemuRunner:
         # FIXME make this a class property, can't remember syntax right now
         self.screen_cap_prefix = "test_"
         self.screen_cap_counter = 0
-        self.screen_cap_name = None
         if monitor_socket_path:
             self.monitor_socket_path = monitor_socket_path
         else:
@@ -156,11 +157,12 @@ class QemuRunner:
                              "-M", model,
                             ]
 
-        self.vnc_display = vnc_display
-        if vnc_display:
-            self.qemu_command.extend(["-vnc", vnc_display])
+        if display is None:
+            self.qemu_command.extend(["-display",  "none"])
+        elif display == "gtk":
+            self.qemu_command.extend(["-display",  "gtk"])
         else:
-            self.vnc_client = None
+            raise QemuRunnerError("Unhandled 'display' arg: %s" % display)
 
         # We can instruct qemu to redirect serial output to file.
         # This changes stdout since it's no longer going there, but
@@ -184,6 +186,10 @@ class QemuRunner:
         if d_args:
             d_args_str = ",".join(d_args)
             self.qemu_command.extend(["-d", d_args_str])
+
+    @property
+    def screen_cap_name(self):
+        return self.screen_cap_prefix + str(self.screen_cap_counter).zfill(2) + ".png"
 
     def __enter__(self):
         qemu_env = os.environ
@@ -219,15 +225,6 @@ class QemuRunner:
         # happening before Qemu is up.  There should be a more
         # graceful way.  Check status via monitor socket possibly?
         sleep(5.5)
-        # connect to VNC
-        if self.vnc_display:
-            try:
-                self.vnc_client = vncdotool.api.connect(self.vnc_display)
-                self.vnc_client.timeout = 6 # for use with e.g. expectScreen(),
-                                            # throws TimeoutError
-            except Exception as e:
-                self._cleanup()
-                raise(e)
 
         # connect to Qemu monitor
         self.monitor_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -268,9 +265,6 @@ class QemuRunner:
         if self.stderr:
             self.stderr.close()
             self.stderr = None
-        if self.vnc_client:
-            self.vnc_client.timeout = None
-            self.vnc_client.disconnect()
         try:
             os.remove(self.monitor_socket_path)
         except FileNotFoundError:
@@ -309,16 +303,67 @@ class QemuRunner:
         #print("pressing: %s" % key)
         self.monitor_socket.send(b"sendkey " + key.encode() + b"\n")
 
-    def capture_screen(self, delay):
+    def expect_screen(self, expected_output_dir, timeout=0):
         """
-        Capture VM screen via VNC.
-        """
-        sleep(delay)
-        n = self.screen_cap_counter
-        self.screen_cap_counter += 1
-        self.screen_cap_name = self.screen_cap_prefix + str(n).zfill(2) + ".png"
+        Takes a directory of target images, looking for an image match
+        of the single file with name self.screen_cap_name.
+        We capture the screen using Qemu monitor,
+        waiting for a max of timeout seconds.
 
-        self.vnc_client.captureScreen(self.screen_cap_name)
+        If the images match, returns True, else False.
+        In either case, the last image captured from Qemu is saved
+        to the test output subdir with name self.screen_cap_name.
+
+        self.screen_cap_counter increments by 1 every time
+        this function is called.
+        """
+        try:
+            if timeout < 0:
+                return False
+
+            start_time = time.time()
+            expected_file_path = os.path.join(expected_output_dir,
+                                              self.screen_cap_name)
+
+            with PIL.Image.open(expected_file_path) as im:
+                expected_data = list(im.getdata())
+            cap_name = self.capture_screen()
+            with PIL.Image.open(cap_name) as im:
+                captured_data = list(im.getdata())
+
+            time_diff = -1 # always allow one capture if timeout == 0
+            while (time_diff < timeout):
+                if expected_data == captured_data:
+                    return True
+                self.capture_screen()
+                with PIL.Image.open(cap_name) as im:
+                    captured_data = list(im.getdata())
+
+                sleep(0.1)
+                time_diff = time.time() - start_time
+
+            return False
+        finally:
+            self.screen_cap_counter += 1
+
+    def capture_screen(self, delay=0):
+        """
+        Capture VM screen via Qemu, after optional delay.
+        """
+        if delay:
+            sleep(delay)
+        n = self.screen_cap_counter
+
+        png_name = self.screen_cap_name
+        ppm_name = ".".join(png_name.split(".")[:-1])
+        ppm_name += ".ppm"
+
+        self.monitor_socket.send(b"screendump " + ppm_name.encode() + b"\n")
         sleep(0.1)
+
+        with PIL.Image.open(ppm_name) as im:
+            im.save(png_name)
+        os.remove(ppm_name)
+
         return self.screen_cap_name
 

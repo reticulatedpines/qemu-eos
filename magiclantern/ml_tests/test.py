@@ -58,8 +58,6 @@ class Test(abc.ABC):
         self.force_continue = force_continue
         self.job_ID = job_ID
         self.gdb_port = 1234 + job_ID
-        self.vnc_port = 12345 + job_ID
-        self.vnc_display = ":" + str(self.vnc_port)
         self.qemu_monitor_path = os.path.join(".", "qemu.monitor" + str(job_ID))
         self.output_top_dir = test_dir
 
