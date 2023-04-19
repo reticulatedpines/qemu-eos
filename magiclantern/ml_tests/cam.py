@@ -46,15 +46,6 @@ class Cam(object):
         
         self.fail_early = fail_early
 
-        # Some cams don't buffer cleanly (is this a DryOS or Qemu problem?)
-        # and screen caps can be unreliable, with tearing or other artifacts.
-        # We must compensate later on.
-        unreliable_screencap_cams = {}
-        if cam in unreliable_screencap_cams:
-            self.unreliable_screencaps = True
-        else:
-            self.unreliable_screencaps = False
-
         # determine Digic version
         if cam in {"50D", "7D", "60D", "500D", "550D", "600D",
                    "1100D", "1200D", "1300D", "2000D", "4000D",

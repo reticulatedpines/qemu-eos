@@ -99,7 +99,6 @@ class LogTest(test.Test):
         # verbose is False so we can capture rather than display qemu output.
         with QemuRunner(self.qemu_dir, self.cam.rom_dir, self.cam.source_dir,
                         self.cam.model,
-                        unreliable_screencaps=self.cam.unreliable_screencaps,
                         sd_file=self.sd_file, cf_file=self.cf_file,
                         stdout=os.path.join(self.output_dir, "qemu.stdout"),
                         stderr=os.path.join(self.output_dir, "qemu.stderr"),
