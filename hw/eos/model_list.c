@@ -449,6 +449,8 @@ struct eos_model_desc eos_model_list[] = {
         .btcm_size              = 0x00010000,
         .ram_extra_addr[0]      = 0xBFE00000,
         .ram_extra_size[0]      = 0x00200000,
+        .ram_extra_addr[1]      = 0x82100000, // don't know what this is.  Should it be treated as a device instead?
+        .ram_extra_size[1]      = 0x00100000, // most (all?) D6 and D7 have it.  D8 not checked.
         .mmio_addr              = 0xC0000000,
         .mmio_size              = 0x20000000,
         .firmware_start         = 0xFE0A0000,
@@ -484,8 +486,6 @@ struct eos_model_desc eos_model_list[] = {
         .current_task_addr      = 0x44F4,
         .serial_flash_size      = 0x800000,
         .serial_flash_sio_ch    = 2,
-        .ram_extra_addr[1]      = 0x82180000,
-        .ram_extra_size[1]      = 0x00010000,
     },
     {
         .name                   = MODEL_NAME_750D,
@@ -509,9 +509,6 @@ struct eos_model_desc eos_model_list[] = {
         .name                   = MODEL_NAME_7D2,
         .digic_version          = 6,
         .ram_size               = 0x20000000,   /* 512MB */
-        .ram_extra_addr[1]      = 0x82100000, // odd early mem copy to some device, I guess.
-                                              // 200D also has a similar pattern.
-        .ram_extra_size[1]      = 0x00100000,
         .current_task_addr      = 0x28568,
         .card_led_address       = 0xD20B0C34,
         .ram_manufacturer_id    = 0x14000101,
@@ -587,6 +584,8 @@ struct eos_model_desc eos_model_list[] = {
         .mmio_size              = 0x1F200000,
         .ram_extra_addr[0]      = 0xDF000000,
         .ram_extra_size[0]      = 0x01000000,
+        .ram_extra_addr[1]      = 0x82100000, // don't know what this is.  Should it be treated as a device instead?
+        .ram_extra_size[1]      = 0x00100000, // most (all?) D6 and D7 have it.  D8 not checked.
         .current_task_name_offs = 0x09,
         .dryos_timer_id         = 1,
         .dryos_timer_interrupt  = 0x1B,
@@ -608,9 +607,6 @@ struct eos_model_desc eos_model_list[] = {
         .name                   = MODEL_NAME_200D,
         .digic_version          = 7,
         .ram_size               = 0x20000000,   /* 512MB */
-        .ram_extra_addr[1]      = 0x82100000, // odd early mem copy to some device, I guess.
-                                              // 7D2 also has a similar pattern.
-        .ram_extra_size[1]      = 0x00100000,
         .card_led_address       = 0xD208016C,   /* WLAN LED 0xD2080190 */
         .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
         .uart_rx_interrupt      = 0x15D,
