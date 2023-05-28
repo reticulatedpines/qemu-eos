@@ -5008,6 +5008,10 @@ unsigned int eos_handle_sdio(unsigned int parm, unsigned int address, unsigned c
         case 0x14:
             msg = "irq enable?";
             MMIO_VAR(eos_state->sd.irq_flags);
+            /* A1100 uses both the SDDMA reg 0x10 as described below and this one, break to avoid double write */
+            if (strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
+                break;
+            }
 
             /* sometimes, a write command ends with this register
              * other times, it ends with SDDMA register 0x10 (mask 0x1F)
