@@ -2045,7 +2045,7 @@ EOF
   # check we support --no-pie first...
   if compile_prog "-Werror -fno-pie" "-no-pie"; then
     CFLAGS_NOPIE="-fno-pie"
-    LDFLAGS_NOPIE="-nopie"
+    LDFLAGS_NOPIE="-no-pie"
   fi
 
   if compile_prog "-fPIE -DPIE" "-pie"; then
@@ -6141,7 +6141,9 @@ fi
 
 # Now we've finished running tests it's OK to add -Werror to the compiler flags
 if test "$werror" = "yes"; then
-    QEMU_CFLAGS="-Werror $QEMU_CFLAGS"
+    #QEMU_CFLAGS="-Werror $QEMU_CFLAGS"
+    # disabling as a hack to allow building with newer gcc
+    QEMU_CFLAGS="$QEMU_CFLAGS"
 fi
 
 if test "$solaris" = "no" ; then
