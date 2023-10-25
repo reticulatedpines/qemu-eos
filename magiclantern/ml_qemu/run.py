@@ -187,6 +187,10 @@ class QemuRunner:
             d_args_str = ",".join(d_args)
             self.qemu_command.extend(["-d", d_args_str])
 
+        print("Starting qemu with command:")
+        print("QEMU_EOS_WORKDIR=" + self.rom_dir + " "
+              + " ".join(self.qemu_command))
+
     @property
     def screen_cap_name(self):
         return self.screen_cap_prefix + str(self.screen_cap_counter).zfill(2) + ".png"
