@@ -46,7 +46,7 @@ void DebugMsg_log(unsigned int cpu_index)
     APPEND("(%02x:%02x) ", r0, r1);
     spaces += len;
 
-    c = eos_get_mem_b(address++);
+    cpu_physical_memory_read(address++, &c, 1);
     while (c)
     {
         // Print until '%' or '\0'
@@ -61,7 +61,7 @@ void DebugMsg_log(unsigned int cpu_index)
             else if (c != '\r') {
                 APPEND("%c", c);
             }
-            c = eos_get_mem_b(address++);
+            cpu_physical_memory_read(address++, &c, 1);
         }
         
         if (c == '%')
@@ -73,7 +73,7 @@ void DebugMsg_log(unsigned int cpu_index)
             format_string[0] = '%';
             do
             {
-                c = eos_get_mem_b(address++);
+                cpu_physical_memory_read(address++, &c, 1);
                 format_string[n++] = c;
             } while (n < COUNT(format_string) && c != '\0' && !strchr("diuoxXsSpc%", c));
 
@@ -83,7 +83,7 @@ void DebugMsg_log(unsigned int cpu_index)
                 continue;
             }
 
-            c = eos_get_mem_b(address++);
+            cpu_physical_memory_read(address++, &c, 1);
 
             // Skip if it fills format buffer or is {long long} or {short} type
             // (I've never seen those in EOS code)
@@ -114,14 +114,18 @@ void DebugMsg_log(unsigned int cpu_index)
             // note: all ARM types {int, long, void*} are of size 32 bits,
             //       and {char, short} should be expanded to 32 bits.
             //       the {long long} is not included in this code.
-            arg = (arg_i == 0) ? r3 : eos_get_mem_w(sp + 4 * (arg_i-1));
+            if (arg_i == 0)
+                arg = r3;
+            else
+                cpu_physical_memory_read(sp + 4 * (arg_i-1), &arg, 4);
             arg_i++;
 
             //APPEND("[%s|%lX] ", format_string, arg);
             if (format == 's')
             {
                 uint32_t sarg = arg;
-                char t = eos_get_mem_b(sarg++);
+                char t;
+                cpu_physical_memory_read(sarg++, &t, 1);
                 while (t != '\0')
                 {
                     if (t == '\n') {
@@ -129,7 +133,7 @@ void DebugMsg_log(unsigned int cpu_index)
                     }
                     else if (t != '\r')
                         APPEND("%c", t);
-                    t = eos_get_mem_b(sarg++);
+                    cpu_physical_memory_read(sarg++, &t, 1);
                 }
             }
             else if (!is_long)

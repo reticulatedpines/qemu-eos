@@ -422,13 +422,6 @@ unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsign
 unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
-void eos_set_mem_w(uint32_t addr, uint32_t val);
-void eos_set_mem_h(uint32_t addr, uint16_t val);
-void eos_set_mem_b(uint32_t addr, uint8_t val);
-uint32_t eos_get_mem_w(uint32_t addr);
-uint16_t eos_get_mem_h(uint32_t addr);
-uint8_t eos_get_mem_b(uint32_t addr);
-
 unsigned int eos_default_handle(unsigned int address, unsigned char type, unsigned int value);
 EOSRegionHandler *eos_find_handler(unsigned int address);
 unsigned int eos_handler(unsigned int address, unsigned char type, unsigned int value);

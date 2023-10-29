@@ -56,7 +56,9 @@ unsigned int eos_handle_ml_helpers(unsigned int parm, unsigned int address, unsi
                 {
                     /* Thumb instruction: wide if bits [15:11] of current halfword
                      * are 0b11101/0b11110/0b11111 (A6.1 in ARMv7-AR) */
-                    uint32_t bits = eos_get_mem_h(value & ~1) >> 11;
+                    uint32_t bits;
+                    cpu_physical_memory_read(value & ~1, &bits, 2);
+                    bits = bits >> 11;
                     size = (bits == 0b11101 || bits == 0b11110 || bits == 0b11111) ? 4 : 2;
                 }
                 target_disas(stderr, CPU(env_archcpu(&eos_state->cpu0->env)), value, size);

@@ -2001,7 +2001,7 @@ static void eos_init_common(void)
     {
         /* fixme: initial PC should probably be set in cpu.c */
         /* note: DIGIC 4 and 5 start execution at FFFF0000 (hivecs) */
-        eos_state->cpu0->env.regs[15] = eos_get_mem_w(0xFC000000);
+        cpu_physical_memory_read(0xfc000000, &(eos_state->cpu0->env.regs[15]), 4);
         fprintf(stderr, "Start address: 0x%08X\n", eos_state->cpu0->env.regs[15]);
     }
 
@@ -2044,51 +2044,6 @@ static void eos_init_common(void)
             MEM_WRITE_ROM(eos_state->model->bootflags_addr + 4, (uint8_t*) &flag, 4);
         }
     }
-}
-
-void eos_set_mem_w(uint32_t addr, uint32_t val)
-{
-    assert(0);
-    cpu_physical_memory_write(addr, &val, sizeof(val));
-}
-
-void eos_set_mem_h(uint32_t addr, uint16_t val)
-{
-    assert(0);
-    cpu_physical_memory_write(addr, &val, sizeof(val));
-}
-
-void eos_set_mem_b(uint32_t addr, uint8_t val)
-{
-    assert(0);
-    cpu_physical_memory_write(addr, &val, sizeof(val));
-}
-
-uint32_t eos_get_mem_w(uint32_t addr)
-{
-    uint32_t buf;
-
-    cpu_physical_memory_read(addr, &buf, sizeof(buf));
-
-    return buf;
-}
-
-uint16_t eos_get_mem_h(uint32_t addr)
-{
-    uint16_t buf;
-
-    cpu_physical_memory_read(addr, &buf, sizeof(buf));
-
-    return buf;
-}
-
-uint8_t eos_get_mem_b(uint32_t addr)
-{
-    uint8_t buf;
-
-    cpu_physical_memory_read(addr, &buf, sizeof(buf));
-
-    return buf;
 }
 
 char *eos_get_current_task_name(void)
@@ -2266,9 +2221,9 @@ unsigned int eos_default_handle(unsigned int address, unsigned char type, unsign
     unsigned int data = 0;
 
     if (type & MODE_WRITE)
-        eos_set_mem_w(address, value);
+        cpu_physical_memory_write(address, &value, 4);
     else
-        data = eos_get_mem_w(address);
+        cpu_physical_memory_read(address, &data, 4);
 
     /* do not log ram/flash access */
     if(((address & 0xF0000000) == 0) || ((address & 0xF0000000) == 0xF0000000) || ((address & 0xF0000000) == 0x40000000))
@@ -6121,7 +6076,8 @@ unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned cha
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: UNLOCK BYPASS BLOCK ERASE [0x%08X]\r\n", rom, state[rom], pc, real_address);
                     for(pos = 0; pos < block_size; pos += 2)
                     {
-                        eos_set_mem_w(real_address + pos, 0xFFFF);
+                        const uint32_t val = 0xffff;
+                        cpu_physical_memory_write(real_address + pos, &val, 4);
                     }
                     block_erase_counter = 0;
                     state[rom] = FLASH_STATE_BLOCK_ERASE_BUSY;
@@ -6133,7 +6089,8 @@ unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned cha
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: UNLOCK BYPASS CHIP ERASE\r\n", rom, state[rom], pc);
                     for(pos = 0; pos < size; pos += 2)
                     {
-                        eos_set_mem_w(base + pos, 0xFFFF);
+                        const uint32_t val = 0xffff;
+                        cpu_physical_memory_write(base + pos, &val, 4);
                     }
                     state[rom] = FLASH_STATE_READ;
                 }
@@ -6150,7 +6107,8 @@ unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned cha
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: CHIP ERASE\r\n", rom, state[rom], pc);
                     for(pos = 0; pos < size; pos += 2)
                     {
-                        eos_set_mem_w(base + pos, 0xFFFF);
+                        const uint32_t val = 0xffff;
+                        cpu_physical_memory_write(base + pos, &val, 4);
                     }
                     state[rom] = FLASH_STATE_READ;
                 }
@@ -6162,7 +6120,8 @@ unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned cha
                     fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: BLOCK ERASE [0x%08X]\r\n", rom, state[rom], pc, real_address);
                     for(pos = 0; pos < block_size; pos += 2)
                     {
-                        eos_set_mem_w(real_address + pos, 0xFFFF);
+                        const uint32_t val = 0xffff;
+                        cpu_physical_memory_write(real_address + pos, &val, 4);
                     }
                     block_erase_counter = 0;
                     state[rom] = FLASH_STATE_BLOCK_ERASE_BUSY;
@@ -6176,7 +6135,7 @@ unsigned int eos_handle_rom(unsigned int rom, unsigned int address, unsigned cha
 
             case FLASH_STATE_PROGRAM:
                 fprintf(stderr, "[ROM%i:%i] at [0x%04X] Command: PROGRAM [0x%04X] -> [0x%08X]\r\n", rom, state[rom], pc, value, real_address);
-                eos_set_mem_w(real_address, value);
+                cpu_physical_memory_write(real_address, &value, 4);
                 state[rom] = FLASH_STATE_READ;
                 break;
         }
@@ -6498,7 +6457,8 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             msg = "Bootloader palette confirm";
             for (int i = 0; i < 16; i++)
             {
-                uint32_t entry = eos_get_mem_w(palette_addr + i*4);
+                uint32_t entry;
+                cpu_physical_memory_read(palette_addr + i * 4, &entry, 4);
                 /* palette entry is different; adjust it to match DIGIC 4/5 routines */
                 uint8_t *ovuy = (uint8_t*)&entry;
                 ovuy[1] -= 128; ovuy[2] -= 128;
