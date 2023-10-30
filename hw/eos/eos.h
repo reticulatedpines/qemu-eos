@@ -95,6 +95,29 @@ typedef struct
     uint8_t regs[16];
 } RTCState;
 
+/* Specific for Digic X (EOS R6?)
+ * See usage in eos.c for more details.
+ */
+typedef struct
+{
+    uint32_t p0;
+    uint32_t unk_addr;    // usually dma_addr + 0x20
+    uint32_t cmd;
+    uint32_t dma_enable;  // may be wrong
+    uint32_t p4;
+    uint32_t p5;
+    uint32_t p6;
+    uint32_t p7;
+    uint32_t p8;
+    uint32_t p9;
+    uint32_t dma_addr;
+    uint32_t block_count;
+    uint32_t pC;
+    uint32_t pD;
+    uint32_t pE;
+    uint32_t pF;
+} SDDMAInfo;
+
 typedef struct
 {
     SDState *card;
@@ -402,6 +425,7 @@ unsigned int eos_handle_unk(unsigned int parm, unsigned int address, unsigned ch
 unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_sdio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_sddma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_sddma_dx(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_cfdma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_cfata(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_asif(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
@@ -420,6 +444,8 @@ unsigned int eos_handle_rom_id(unsigned int parm, unsigned int address, unsigned
 unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
 unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_dummy_dev_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
 unsigned int eos_default_handle(unsigned int address, unsigned char type, unsigned int value);

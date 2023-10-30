@@ -694,6 +694,18 @@ struct eos_model_desc eos_model_list[] = {
         .dedicated_movie_mode   = 0,
     },
     {
+        .name                   = MODEL_NAME_EOSR,
+        .digic_version          = 8,
+        .ram_size               = 0x40000000,   // unknown. assuming 1GB for now
+        .card_led_address       = 0xD01300D4,
+        .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt      = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be validated.
+        .uart_tx_interrupt      = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be validated.
+        .rom0_size              = 0x02000000,   // 32MB (main ROM)
+        .rom1_size              = 0x04000000,   // 64MB (secondary ROM)
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+    },
+    {
         .name                   = MODEL_NAME_EOSRP,
         .digic_version          = 8,
         .ram_size               = 0x40000000,   /* unknown. assuming 1GB for now */
@@ -716,8 +728,41 @@ struct eos_model_desc eos_model_list[] = {
         .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
         .uart_rx_interrupt      = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be validated.
         .uart_tx_interrupt      = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be validated.
-        .rom0_size              = 0x02000000,   /* 32MB (main ROM) */
-        .rom1_size              = 0x01000000,   /* 32MB (secondary ROM) */
+        .rom0_size              = 0x02000000,   // 32MB (main ROM)
+        .rom1_size              = 0x01000000,   // 16MB (secondary ROM)
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+    },
+/*************************** DIGIC X ********************************/
+    {
+        /* defaults for DIGIC X cameras */
+        .digic_version          = 10,
+        .firmware_start         = 0xE0100000,   // differs from D6-8!
+        .bootflags_addr         = 0xE3FF8000,   // no idea why, but it doesn't work; setting 0xE3FF8004 from gdb works fine...
+        .rom0_addr              = 0xE0000000,
+        .rom1_addr              = 0xF0000000,
+        .caching_bit            = 0x40000000,
+        .mmio_addr              = 0xBFE00000,   /* fixme: BFE is configured as regular RAM, but certain values are expected */
+        .mmio_size              = 0x1F200000,
+        .ram_extra_addr[0]      = 0xDF000000,   // there's some extra ram where part of bootloader is copied
+        .ram_extra_size[0]      = 0x01000000,
+        .current_task_name_offs = 0x09,
+        .dryos_timer_id         = 1,
+        .dryos_timer_interrupt  = 0x1B,
+        .hptimer_interrupt      = 0x28,
+        .sd_driver_interrupt    = 0x15E,         // 0x15e, 0x17e on R6
+        .sd_dma_interrupt       = 0x16E,         // 0x16e, 0x18e on R6
+        .max_cpus               = 2,
+    },
+    {
+        .name                   = MODEL_NAME_EOSR6,
+        .digic_version          = 10,
+        .ram_size               = 0x40000000,   /* unknown. assuming 1GB for now */
+        .card_led_address       = 0xD22390C2,
+        .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
+        .rom0_size              = 0x04000000,   /* 32MB (main ROM) */
+        .rom1_size              = 0x02000000,   /* 64MB (secondary ROM) */
+        .uart_rx_interrupt      = 0x15D,         // seem still valid
+        .uart_tx_interrupt      = 0x16D,
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
     {
@@ -725,4 +770,3 @@ struct eos_model_desc eos_model_list[] = {
         .digic_version = 0,
     }
 };
-

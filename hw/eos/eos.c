@@ -307,6 +307,20 @@ static void eos_EOSM5_machine_init(MachineClass *mc)
     mc->max_cpus = 2; // wants to be in sync with value in model_list.c
 }
 
+static void eos_EOSR_machine_init(MachineClass *mc)
+{
+    mc->desc = "Canon EOS R";
+    mc->init = eos_init;
+    mc->max_cpus = 2; // wants to be in sync with value in model_list.c
+}
+
+static void eos_EOSR6_machine_init(MachineClass *mc)
+{
+    mc->desc = "Canon EOS R6";
+    mc->init = eos_init;
+    mc->max_cpus = 2; // wants to be in sync with value in model_list.c
+}
+
 static void eos_EOSRP_machine_init(MachineClass *mc)
 {
     mc->desc = "Canon EOS RP";
@@ -366,6 +380,8 @@ DEFINE_MACHINE(MODEL_NAME_77D, eos_77D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_800D, eos_800D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_850D, eos_850D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSM5, eos_EOSM5_machine_init)
+DEFINE_MACHINE(MODEL_NAME_EOSR, eos_EOSR_machine_init)
+DEFINE_MACHINE(MODEL_NAME_EOSR6, eos_EOSR6_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSRP, eos_EOSRP_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSM50, eos_EOSM50_machine_init)
 
@@ -515,6 +531,14 @@ EOSRegionHandler eos_handlers[] =
     { "SFIO87",       0xC8070000, 0xC8070FFF, eos_handle_sfio, 0x87 },
     { "SFIO88",       0xC8080000, 0xC8080FFF, eos_handle_sfio, 0x88 },
     { "SDIOM50",      0xD0740000, 0xD0740FFF, eos_handle_sdio, 0x50 },
+
+    { "SDIOR6_1",     0xD2B10000, 0xD2B10FFF, eos_handle_sdio, 0x50 },
+    { "SDDMAR6_1",    0xD2B11000, 0xD2B11FFF, eos_handle_sddma_dx, 0x51 },
+    /* below are commented out as qemu implements only one SD controller
+     * This should be easy to overcome, but was not needed for now. */
+    //{ "SDIOR6_2",     0xD2B20000, 0xD2B20FFF, eos_handle_sdio, 0x50 },
+    //{ "SDDMAR6_2",    0xD2B21000, 0xD2B11FFF, eos_handle_sddma_dx, 0x51 },
+
     { "ADTGDMA",      0xC0500060, 0xC050007F, eos_handle_adtg_dma, 0 },
     { "UartDMA",      0xC05000C0, 0xC05000DF, eos_handle_uart_dma, 0 },
     { "CFDMA0*",      0xC0500000, 0xC05000FF, eos_handle_cfdma, 0x0F },
@@ -596,6 +620,17 @@ EOSRegionHandler eos_handlers[] =
 
     { "ROMID",        0xBFE01FD0, 0xBFE01FDF, eos_handle_rom_id, 0 },
     { "ROMID",        0xD5100010, 0xD5100010, eos_handle_rom_id, 1 },
+
+    { "DIGICX",       0xd2000000, 0xd21fffff, eos_handle_digicX, 0 },
+    { "DIGICX",       0xd2210000, 0xd22fffff, eos_handle_digicX, 0 },
+    { "DIGICX",       0xd2600000, 0xd26fffff, eos_handle_digicX, 1 },
+    { "DIGICX",       0xd2a00000, 0xd2afffff, eos_handle_digicX, 2 },
+    { "DIGICX",       0xd2c00000, 0xd2cfffff, eos_handle_digicX, 3 },
+
+    { "DUMMYX",       0xca340000, 0xca34ffff, eos_handle_dummy_dev_digicX, 0 },
+    { "DUMMYX",       0xcc340010, 0xcc34ffff, eos_handle_dummy_dev_digicX, 1 },
+    { "DUMMYX",       0xce340010, 0xce34ffff, eos_handle_dummy_dev_digicX, 2 },
+    { "DUMMYX",       0xd0340010, 0xd034ffff, eos_handle_dummy_dev_digicX, 3 },
 
     { "DIGIC6",       0xD0000000, 0xDFFFFFFF, eos_handle_digic6, 0 },
     { "DIGIC6",       0xC8100000, 0xC8100FFF, eos_handle_digic6, 1 },
@@ -1491,7 +1526,8 @@ static void eos_update_display(void *parm)
         );
     }
     else if (strcmp(s->model->name, MODEL_NAME_EOSM3) == 0 ||
-             strcmp(s->model->name, MODEL_NAME_EOSM50) == 0)
+             strcmp(s->model->name, MODEL_NAME_EOSM50) == 0 ||
+             strcmp(s->model->name, MODEL_NAME_EOSRP) == 0)
     {
         uint64_t size = height * s->disp.bmp_pitch;
         MemoryRegionSection section = memory_region_find(
@@ -1668,6 +1704,7 @@ static void *eos_init_cpu(void)
         (eos_state->model->digic_version == 5) ? "arm946-eos5-arm-cpu"   :  // minor differences
         (eos_state->model->digic_version == 7) ? "cortex-a9-eos-arm-cpu" :  // dual core
         (eos_state->model->digic_version == 8) ? "cortex-a9-eos-arm-cpu" :  // same as D7?
+        (eos_state->model->digic_version == 10) ? "cortex-a9-eos-arm-cpu":  // same as D7?
         (eos_state->model->digic_version >= 6) ? "cortex-r4-eos-arm-cpu" :  // also used on Eeko (fake version 50)
                                                  "arm946-arm-cpu";          // unused here
     
@@ -2006,7 +2043,8 @@ static void eos_init_common(void)
     }
 
     if (eos_state->model->digic_version == 7 ||
-        eos_state->model->digic_version == 8)
+        eos_state->model->digic_version == 8 ||
+        eos_state->model->digic_version == 10)
     {
         /* fixme: what configures this address as startup? */
         eos_state->cpu0->env.regs[15] = 0xE0000000;
@@ -2040,7 +2078,9 @@ static void eos_init_common(void)
         {
             /* change the boot flag */
             uint32_t flag = strstr(options, "boot=1") ? 0xFFFFFFFF : 0;
-            fprintf(stderr, "Setting BOOTDISK flag to %X\n", flag);
+            fprintf(stderr, "Setting BOOTDISK flag at %X to %X\n",
+                    eos_state->model->bootflags_addr + 4,
+                    flag);
             MEM_WRITE_ROM(eos_state->model->bootflags_addr + 4, (uint8_t*) &flag, 4);
         }
     }
@@ -2357,15 +2397,96 @@ unsigned int eos_trigger_int(unsigned int id, unsigned int delay)
     return 0;
 }
 
-#if 0
-static void cpu1_wakeup_timer(void *opaque)
+unsigned int eos_handle_dummy_dev_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    EOSState *s = opaque;
-    printf(" ==== wakeup_timer callback fired\n");
-    CPU(s->cpu1)->halted = 0;
-    printf(KLRED"Wake Up CPU1\n"KRESET);
+    const char *msg = 0;
+    unsigned int ret = 0;
+
+    static int devices_init[0xF];
+
+    /* R6 initializes 4 regions in the same way:
+     * 0xca340000, 0xcc340010, 0xce340010, 0xd0340010
+     * First, code waits for +0x10 to be 0 (then something is written)
+     * Later, code waits for +0x10 to become 1 (then it continues)
+     */
+    if (address < 0xD1000000)
+    {
+        if (address & 0xc8)
+        {
+            msg = "device init? 0xc8";
+            ret = 0xFF; //maybe 0x7?
+        }
+        else if (address & 0x10)
+        {
+            int base = ((address > 0x1C) & 0xF);
+            msg = "device init? 0x10";
+            ret = devices_init[base];
+            // dummy toggle
+            devices_init[base] = !devices_init[base];
+        }
+    }
+
+    io_log("DUMMYX", address, type, value, ret, msg, 0, 0);
+    return ret;
 }
-#endif
+
+unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    const char *msg = 0;
+    unsigned int ret = 0;
+
+    if (address >= 0xD2230000 && address <= 0xD223FFFF) {
+        msg = "R6 GPIO?";
+        ret = 0;
+    }
+
+    switch (address)
+    {
+        case 0xD2210008: /* CLOCK_ENABLE */
+            msg = "CLOCK_ENABLE";
+            MMIO_VAR(eos_state->clock_enable_6);
+            break;
+        case 0xd2220404:
+            msg = "Wake up CPU1?";       /* R6: wake up the second CPU? */
+            assert(eos_state->cpu1);
+            #if 0
+            CPU(eos_state->cpu1)->halted = 0;
+            printf(KLRED"Wake up CPU1\n"KRESET);
+            #endif
+            ret = 1;
+            break;
+        case 0xD2030000:
+            //msg = "bootloader, card mout related - for CFe";
+            return 1; // loop with 11000000 iterations, takes a minute if prints are enabled
+            break;
+        /* below are values needed to progress through 1st stage bootloader
+         * without any known context what exactly those do */
+        case 0xd2010000:
+            ret = 0x80000000;
+            break;
+        case 0xD2010070:
+            ret = 1;
+            break;
+        case 0xd20100A0:
+            ret = 0x1A5B34;
+            break;
+        case 0xd2100248:
+            ret = 0x1;
+            break;
+        case 0xD26105C0:
+            ret = 0x10000;
+            break;
+        case 0xd21105c0:
+        case 0xd21305c0:
+        case 0xd2a105c0:
+        case 0xd2c205C0:
+            ret = 0x10000;
+            break;
+    }
+
+    io_log("DIGICX", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
 
 unsigned int eos_handle_multicore(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
@@ -2978,7 +3099,8 @@ static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned
     {
         if (eos_state->model->digic_version == 6 ||
             eos_state->model->digic_version == 7 ||
-            eos_state->model->digic_version == 8)
+            eos_state->model->digic_version == 8 ||
+            eos_state->model->digic_version == 10)
         {
             eos_state->card_led = 
                 ((value & 0x0F000F) == 0x0D0002) ?  1 :
@@ -5184,6 +5306,57 @@ unsigned int eos_handle_sddma(unsigned int parm, unsigned int address, unsigned 
     return ret;
 }
 
+unsigned int eos_handle_sddma_dx(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    unsigned int ret = 0;
+    const char *msg = 0;
+
+    switch(address & 0x1FFF)
+    {
+        /* There are many more registers written (as compared to Digic 8)
+         * but only those were sufficient to run autoexec on R6 */
+        case 0x1208:
+            /* This very differs from older SDDMA implementation.
+             * Now instead of multiple commands with specific values, just one
+             * is used. Value is ram address to SDDMAInfo structure, which
+             * holds all the details.
+             */
+            msg = "Command";
+            if (type & MODE_WRITE)
+            {
+                SDDMAInfo dmainfo;
+                // read structure from address
+                eos_mem_read((hwaddr)value, &dmainfo, sizeof(SDDMAInfo));
+                SD_DPRINTF("DMA CMD: %x ADDR: %x \n", dmainfo.cmd, dmainfo.dma_addr);
+
+                eos_state->sd.dma_enabled = dmainfo.dma_enable & 1; // I'm not sure if this field is correct
+                eos_state->sd.dma_count = dmainfo.block_count;
+                eos_state->sd.dma_addr = dmainfo.dma_addr;
+
+                /* DMA transfer? */
+                if (eos_state->sd.cmd_flags == 0x13 && eos_state->sd.dma_enabled)
+                {
+                    sdio_write_data();
+                    sdio_trigger_interrupt();
+                }
+            }
+            break;
+        case 0x1004:
+            msg = "Status?";
+            /* No idea what this does. Early on 0x3FFF is written there;
+             * Later when value is read, 0x3FFF meets the criteria that are
+             * needed to progress.
+             * Maybe it should be MMIO variable, hard to tell for now.*/
+            ret = 0x3fff;
+            break;
+        case 0x18:
+            break;
+    }
+
+    io_log("SDDMA_X", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 #undef SD_DPRINTF
 #undef SD_EPRINTF
 
@@ -6409,6 +6582,18 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
 
     switch (address)
     {
+        // Digic X hacks from kitor
+        // FIXME kitor please add some comments on why required
+        case 0xDEF00014:
+            ret = -1;
+            break;
+        case 0xdef00020:
+            ret = 0x60;
+            break;
+        case 0xdef00040:
+            ret = 0xFFFFFFFF;
+            break;
+        // end kitor hacks
         case 0xD20B071C:
         case 0xD0034068:
         case 0xD0034020:
@@ -6621,8 +6806,10 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
         case 0xD0110404:
             msg = "Wake up CPU1?";       /* M50: wake up the second CPU? */
             assert(eos_state->cpu1);
+            #if 0
             CPU(eos_state->cpu1)->halted = 0;
             printf(KLRED"Wake up CPU1\n"KRESET);
+            #endif
             ret = 1;
             break;
 
@@ -6670,7 +6857,12 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             ret = 0;
             //~ ret = 0x10000;
     }
-    
+
+    if (address >= 0xD0130000 && address <= 0xD0130FFF) {
+        msg = "RP GPIO";
+        ret = 0;
+    }
+
     io_log("DIGIC6", address, type, value, ret, msg, 0, 0);
     return ret;
 }
