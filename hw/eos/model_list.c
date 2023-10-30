@@ -557,6 +557,7 @@ struct eos_model_desc eos_model_list[] = {
         .rom0_size              = 0x800000,     /* 8MB */
         .current_task_addr      = 0x803C,
         .card_led_address       = 0xD20B0994,
+        .uart_rx_interrupt      = 0xE7,
     },
     {
         .name                   = MODEL_NAME_EOSM10,
