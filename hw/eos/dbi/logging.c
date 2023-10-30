@@ -347,16 +347,6 @@ static void eos_idc_log_call(CPUState *cpu, CPUARMState *env,
 /* todo: move it in EOSState? */
 static uint32_t interrupt_level = 0;
 
-static uint8_t get_stackid(void)
-{
-    if (interrupt_level)
-    {
-        return 0xFE;
-    }
-
-    return eos_get_current_task_id() & 0x7F;
-}
-
 struct call_stack_entry
 {
     union
@@ -379,6 +369,30 @@ struct call_stack_entry
 
 static struct call_stack_entry call_stacks[256][256];
 static int call_stack_num[256] = {0};
+
+/* special stack IDs */
+#define ID_INVALID   (COUNT(call_stack_num)-1)   /* no DryOS task started yet, or no info available */
+#define ID_INTERRUPT (COUNT(call_stack_num)-2)   /* some interrupt handler (i.e. not a regular DryOS task) */
+
+static uint8_t get_stackid(void)
+{
+    if (interrupt_level)
+    {
+        return ID_INTERRUPT;
+    }
+
+    uint8_t new_task_id = eos_get_current_task_id();
+
+    /* ID_INTERRUPT is special; hopefully DryOS never returns this task ID */
+    assert(new_task_id != ID_INTERRUPT);
+
+    /* eos_get_current_task_id() might return 0xFF = invalid/unknown; that's OK */
+    if (new_task_id == 0xFF) {
+        assert(new_task_id == ID_INVALID);
+    }
+
+    return new_task_id & 0xFF;
+}
 
 static inline void call_stack_push(uint8_t id, uint32_t *regs,
     uint32_t pc, uint32_t last_pc, uint32_t is_tail_call, uint32_t interrupt_id)
@@ -1050,7 +1064,7 @@ static void eos_callstack_log_exec(CPUState *cpu, TranslationBlock *tb)
             /* interrupted a regular DryOS task
              * save the previous state (we'll need to restore it when returning from interrupt) */
             uint8_t id = get_stackid();
-            assert(id != 0xFE);
+            assert(id != ID_INTERRUPT);
             //fprintf(stderr, "Saving state [%x]: pc %x, lr %x, sp %x, size %x\n", id, prev_pc, prev_lr, prev_sp, prev_size);
             cs_exec_states[id] = (struct call_stack_exec_state) {
                 .pc = prev_pc,
@@ -1062,7 +1076,7 @@ static void eos_callstack_log_exec(CPUState *cpu, TranslationBlock *tb)
 
         interrupt_level++;
         uint8_t id = get_stackid();
-        assert(id == 0xFE);
+        assert(id == ID_INTERRUPT);
         if (qemu_loglevel_mask(EOS_LOG_CALLS)) {
             int len = call_stack_indent(id, 0, 0);
             len += fprintf(stderr, KCYN"interrupt %02Xh"KRESET, eos_state->irq_id);
@@ -1335,7 +1349,7 @@ recheck:
                      * we'll need to restore it when returning from interrupt back to this task
                      * fixme: duplicate code */
                     uint8_t id = get_stackid();
-                    assert(id != 0xFE);
+                    assert(id != ID_INTERRUPT);
                     //fprintf(stderr, "Saving state [%x]: pc %x, lr %x, sp %x, size %x\n", id, prev_pc, prev_lr, prev_sp, prev_size);
                     cs_exec_states[id] = (struct call_stack_exec_state) {
                         .pc = prev_pc,
@@ -1360,7 +1374,7 @@ recheck:
                 /* note: internal returns inside an interrupt were handled as normal returns */
                 assert(interrupt_level > 0);
                 uint8_t id = get_stackid();
-                assert(id == 0xFE);
+                assert(id == ID_INTERRUPT);
 
                 int interrupt_entries = 0;
                 for (int k = call_stack_num[id]-1; k >= 0; k--)
@@ -1427,7 +1441,7 @@ recheck:
                     /* get the new stack ID (a regular DryOS stack) 
                      * and restore our state from there */
                     uint8_t id = get_stackid();
-                    assert(id != 0xFE);
+                    assert(id != ID_INTERRUPT);
                     prev_pc   = cs_exec_states[id].pc; prev_pc0 = prev_pc & ~1;
                     prev_lr   = cs_exec_states[id].lr;
                     prev_sp   = cs_exec_states[id].sp;
@@ -1537,7 +1551,7 @@ recheck:
                         if (!qemu_loglevel_mask(EOS_LOG_NO_TAIL_CALLS)) {
                             /* note: many warnings with -d notail */
                             /* there's also a false warning at first jump */
-                            if (!(id == 0x7F && call_stack_num[id] == 0))
+                            if (!(id == ID_INVALID && call_stack_num[id] == 0))
                             {
                                 int len = call_stack_indent(id, 0, 0);
                                 len += fprintf(stderr, KCYN"Warning: missed function call?"KRESET);
