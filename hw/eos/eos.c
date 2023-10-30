@@ -2092,7 +2092,7 @@ uint8_t eos_get_current_task_id(void)
     cpu_physical_memory_read(eos_state->model->current_task_addr, &current_task_ptr, 4);
     if (current_task_ptr && current_task_ptr < 0x1000000)
     {
-        if (s->model->digic_version < 4)
+        if (eos_state->model->digic_version < 4)
         {
             // VxWorks doesn't seem to use unique task IDs
             // workaround: assume unique current_task_ptr, and assign our own ID
