@@ -666,7 +666,7 @@ EOSRegionHandler eos_handlers[] =
     { "ROMID",        0xD5100010, 0xD5100010, eos_handle_rom_id, 1 },
     { "ROMID",        0xDFFC4FB0, 0xDFFC4FBF, eos_handle_rom_id, 2 }, // digic X
 
-    { "DIGICX",       0xd2000000, 0xd21fffff, eos_handle_digicX, 0 },
+    { "DIGICX",       0xd2100000, 0xd21fffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2210000, 0xd22fffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2600000, 0xd26fffff, eos_handle_digicX, 1 },
     { "DIGICX",       0xd2a00000, 0xd2afffff, eos_handle_digicX, 2 },
