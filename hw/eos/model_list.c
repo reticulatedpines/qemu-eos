@@ -694,6 +694,18 @@ struct eos_model_desc eos_model_list[] = {
         .dedicated_movie_mode   = 0,
     },
     {
+        .name                     = MODEL_NAME_EOSM6mk2,
+        .digic_version            = 8,
+        .ram_size                 = 0x40000000,   /* unknown. assuming 1GB for now */
+        .card_led_address         = 0xD01300D4,
+        .current_task_addr        = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt        = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .uart_tx_interrupt        = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .rom0_size                = 0x02000000,   /* 32MB (main ROM) */
+        .rom1_size                = 0x01000000,   /* 16MB (secondary ROM) */
+        .dedicated_movie_mode     = 1,            // camera has support for it. TODO: Set to 1 when implement    ing it.
+    },
+    {
         .name                   = MODEL_NAME_EOSR,
         .digic_version          = 8,
         .ram_size               = 0x40000000,   // unknown. assuming 1GB for now
@@ -718,6 +730,31 @@ struct eos_model_desc eos_model_list[] = {
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
     {
+        .name                     = MODEL_NAME_SX70,
+        .digic_version            = 8,
+        .ram_size                 = 0x40000000,   /* unknown. assuming 1GB for now */
+        .current_task_addr        = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt        = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .uart_tx_interrupt        = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .rom0_size                = 0x02000000,   /* 32MB (main ROM) */
+        .rom1_size                = 0x00000000,   /* 16MB (secondary ROM) */
+        .dedicated_movie_mode     = 0,            // camera has support for it. TODO: Set to 1 when implement    ing it.
+//        .dryos_timer_interrupt  = 0x0E,
+    },
+    {
+        .name                     = MODEL_NAME_SX740,
+        .digic_version            = 8,
+        .ram_size                 = 0x40000000,   /* unknown. assuming 1GB for now */
+        .current_task_addr        = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt        = 0x15D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .uart_tx_interrupt        = 0x16D,        // TODO: taken from 200D. Probably valid but Has to be vali    dated.
+        .rom0_size                = 0x02000000,   /* 32MB (main ROM) */
+        .rom1_size                = 0x00000000,   /* 16MB (secondary ROM) */
+        .dedicated_movie_mode     = 0,            // camera has support for it. TODO: Set to 1 when implement    ing it.
+//        .dryos_timer_interrupt  = 0x0E,
+    },
+
+    {
         .name                   = MODEL_NAME_850D,
         .digic_version          = 8,
         .ram_size               = 0x80000000,   // 3GB?  smemShowFix has things in BA region. 
@@ -732,6 +769,19 @@ struct eos_model_desc eos_model_list[] = {
         .rom1_size              = 0x01000000,   // 16MB (secondary ROM)
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
+    {
+        .name                     = MODEL_NAME_90D,
+        .digic_version            = 8,
+        .ram_size                 = 0x40000000,   /* unknown. assuming 1GB for now */
+        .current_task_addr        = 0x28,         /* fixme: read from virtual memory */
+        .uart_rx_interrupt        = 0x15D,        // TODO: taken from 200D. Probably valid but has to be vali    dated.
+        .uart_tx_interrupt        = 0x16D,        // TODO: taken from 200D. Probably valid but has to be vali    dated.
+        .rom0_size                = 0x02000000,   /* 32MB (main ROM) */
+        .rom1_size                = 0x02000000,   /* 32MB (secondary ROM) */
+        .dedicated_movie_mode     = 0,            // camera has support for it. TODO: Set to 1 when implement    ing it.
+//        .dryos_timer_interrupt  = 0x0E,
+    },
+
 /*************************** DIGIC X ********************************/
     {
         /* defaults for DIGIC X cameras */
@@ -763,7 +813,7 @@ struct eos_model_desc eos_model_list[] = {
         .rom1_size              = 0x04000000,   /* 64MB (secondary ROM) */
         .uart_rx_interrupt      = 0x15D,        // seem still valid
         .uart_tx_interrupt      = 0x16D,
-        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementi     ng it.
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
     {
         .name                   = MODEL_NAME_EOSR6,

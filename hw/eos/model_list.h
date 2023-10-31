@@ -42,12 +42,16 @@
 #define MODEL_NAME_77D "77D"
 #define MODEL_NAME_800D "800D"
 #define MODEL_NAME_850D "850D"
+#define MODEL_NAME_90D "90D"
 #define MODEL_NAME_EOSM5 "EOSM5"
 #define MODEL_NAME_EOSM50 "M50"
+#define MODEL_NAME_EOSM6mk2 "M6mk2"
 #define MODEL_NAME_EOSRP "RP"
 #define MODEL_NAME_EOSR "R"
 #define MODEL_NAME_EOSR5 "R5"
 #define MODEL_NAME_EOSR6 "R6"
+#define MODEL_NAME_SX740 "SX740"
+#define MODEL_NAME_SX70 "SX70"
 
 enum { ram_extra_array_len = 2 };
 
