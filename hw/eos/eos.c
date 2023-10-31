@@ -649,6 +649,8 @@ EOSRegionHandler eos_handlers[] =
     { "DIGIC6",       0xC8100000, 0xC8100FFF, eos_handle_digic6, 1 },
 
     { "BOOT8",        0xBFE01FC4, 0xBFE01FCF, eos_handle_boot_digic8, 0 },
+//    { "BOOTX",        0xDFFC4FA0, 0xDFFC4FAF, eos_handle_boot_digicX, 0 },
+//    { "BOOTX",        0xdffc0000, 0xDFFC48ff, eos_handle_boot_digicX, 0 },
 
     { "ML helpers",   0xCF123000, 0xCF1230FF, eos_handle_ml_helpers, 0 },
     { "ML helpers",   0xC0123400, 0xC01234FF, eos_handle_ml_helpers, 1 },
@@ -3195,10 +3197,17 @@ static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned
 
     if (type & MODE_WRITE)
     {
-        if (eos_state->model->digic_version == 6 ||
+        if (eos_state->model->digic_version == 10)
+        {
+            eos_state->card_led =
+                ((value & 0xFFF000F) == 0x24D0002) ?  1 : // led on
+                ((value & 0xFFF000F) == 0x24C0003) ? -1 : // led off
+                (value == 0x24C0033)               ? -1 : // initial val set by bootloader on R6
+                (value == 0x240003C)               ? -1 : 0; // initial val set by bootloader on R5
+        }
+        else if (eos_state->model->digic_version == 6 ||
             eos_state->model->digic_version == 7 ||
-            eos_state->model->digic_version == 8 ||
-            eos_state->model->digic_version == 10)
+            eos_state->model->digic_version == 8)
         {
             eos_state->card_led = 
                 ((value & 0x0F000F) == 0x0D0002) ?  1 :
