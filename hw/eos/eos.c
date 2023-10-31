@@ -649,8 +649,8 @@ EOSRegionHandler eos_handlers[] =
     { "DIGIC6",       0xC8100000, 0xC8100FFF, eos_handle_digic6, 1 },
 
     { "BOOT8",        0xBFE01FC4, 0xBFE01FCF, eos_handle_boot_digic8, 0 },
-//    { "BOOTX",        0xDFFC4FA0, 0xDFFC4FAF, eos_handle_boot_digicX, 0 },
-//    { "BOOTX",        0xdffc0000, 0xDFFC48ff, eos_handle_boot_digicX, 0 },
+    { "BOOTX",        0xDFFC4FA0, 0xDFFC4FAF, eos_handle_boot_digicX, 0 },
+    { "BOOTX",        0xdffc0000, 0xDFFC48ff, eos_handle_boot_digicX, 0 },
 
     { "ML helpers",   0xCF123000, 0xCF1230FF, eos_handle_ml_helpers, 0 },
     { "ML helpers",   0xC0123400, 0xC01234FF, eos_handle_ml_helpers, 1 },
@@ -2412,6 +2412,54 @@ unsigned int eos_trigger_int(unsigned int id, unsigned int delay)
     return 0;
 }
 
+static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    const char *msg = "Card LED";
+    unsigned int ret = 0;
+    static int stored_value = 0;
+
+    MMIO_VAR(stored_value);
+
+    if (type & MODE_WRITE)
+    {
+        if (eos_state->model->digic_version == 10)
+        {
+            eos_state->card_led =
+                ((value & 0xFFF000F) == 0x24D0002) ?  1 : // led on
+                ((value & 0xFFF000F) == 0x24C0003) ? -1 : // led off
+                (value == 0x24C0033)               ? -1 : // initial val set by bootloader on R6
+                (value == 0x240003C)               ? -1 : 0; // initial val set by bootloader on R5
+        }
+        else if (eos_state->model->digic_version == 6 ||
+            eos_state->model->digic_version == 7 ||
+            eos_state->model->digic_version == 8)
+        {
+            eos_state->card_led =
+                ((value & 0x0F000F) == 0x0D0002) ?  1 :
+                ((value & 0x0F000F) == 0x0C0003) ? -1 :
+                (value == 0x8A0075)              ? -1 : 0;
+        }
+        else
+        {
+            eos_state->card_led =
+                (value == 0x46 || value == 0x138800
+                               || value == 0x138000  /* 7D */
+                               || value == 0x93D800) ?  1 :
+                (value == 0x44 || value == 0x838C00 ||
+                 value == 0x40 || value == 0x038C00
+                               || value == 0x83DC00
+                               || value == 0x800C00   /* 7D */
+                               || value == 0xE000000) ? -1 : 0;
+        }
+        
+        /* this will trigger if somebody writes an invalid LED ON/OFF code */
+        assert(eos_state->card_led);
+    }
+    
+    io_log("GPIO", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 unsigned int eos_handle_dummy_dev_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     const char *msg = 0;
@@ -2451,12 +2499,25 @@ unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned
     unsigned int ret = 0;
 
     if (address >= 0xD2230000 && address <= 0xD223FFFF) {
+        /* 0x0xD223xxxxx, 0xD22390C2 on R6 */
+        if (address == eos_state->model->card_led_address)
+        {
+            return eos_handle_card_led(parm, address, type, value);
+        }
         msg = "R6 GPIO?";
         ret = 0;
     }
 
     switch (address)
     {
+        case 0xD2100600:
+        case 0xD2120600:
+        case 0xD2C10600:
+        case 0xD2A00600:
+        case 0xD2600600:
+            msg = "MEMIF init?";
+            ret = 0xFFFFFFFF;
+            break;
         case 0xD2210008: /* CLOCK_ENABLE */
             msg = "CLOCK_ENABLE";
             MMIO_VAR(eos_state->clock_enable_6);
@@ -3184,54 +3245,6 @@ unsigned int avs_handle(int address, int type, int val)
         }
     }
     io_log("AVS", address, type, val, ret, msg, 0, 0);
-    return ret;
-}
-
-static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
-{
-    const char *msg = "Card LED";
-    unsigned int ret = 0;
-    static int stored_value = 0;
-    
-    MMIO_VAR(stored_value);
-
-    if (type & MODE_WRITE)
-    {
-        if (eos_state->model->digic_version == 10)
-        {
-            eos_state->card_led =
-                ((value & 0xFFF000F) == 0x24D0002) ?  1 : // led on
-                ((value & 0xFFF000F) == 0x24C0003) ? -1 : // led off
-                (value == 0x24C0033)               ? -1 : // initial val set by bootloader on R6
-                (value == 0x240003C)               ? -1 : 0; // initial val set by bootloader on R5
-        }
-        else if (eos_state->model->digic_version == 6 ||
-            eos_state->model->digic_version == 7 ||
-            eos_state->model->digic_version == 8)
-        {
-            eos_state->card_led = 
-                ((value & 0x0F000F) == 0x0D0002) ?  1 :
-                ((value & 0x0F000F) == 0x0C0003) ? -1 :
-                (value == 0x8A0075)              ? -1 : 0;
-        }
-        else
-        {
-            eos_state->card_led = 
-                (value == 0x46 || value == 0x138800
-                               || value == 0x138000  /* 7D */
-                               || value == 0x93D800) ?  1 :
-                (value == 0x44 || value == 0x838C00 ||
-                 value == 0x40 || value == 0x038C00
-                               || value == 0x83DC00
-                               || value == 0x800C00   /* 7D */
-                               || value == 0xE000000) ? -1 : 0;
-        }
-        
-        /* this will trigger if somebody writes an invalid LED ON/OFF code */
-        assert(eos_state->card_led);
-    }
-    
-    io_log("GPIO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
 
@@ -6631,11 +6644,13 @@ unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, uns
     unsigned int ret = 0;
 
     static uint32_t boot_addr;
+    static uint32_t boot_flags;
 
     switch (address)
     {
         case 0xBFE01FC4:
             msg = "Flags?";
+            MMIO_VAR(boot_flags);
             break;
 
         case 0xBFE01FC8:
@@ -6647,6 +6662,39 @@ unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, uns
     io_log("BOOT8", address, type, value, ret, msg, 0, 0);
     return ret;
 }
+
+unsigned int eos_handle_boot_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    const char *msg = 0;
+    unsigned int ret = 0;
+    unsigned int tables[0x4800] = {0};
+    unsigned int i = 0;
+
+    switch (address)
+    {
+        case 0xdffc4fa0: // is it valid only for R6?
+            msg = "CPU1 Boot address";
+            break;
+        case 0xdffc0000 ... 0xdffc48ff: // mmu tables ram copy
+            // SJE FIXME this is just a normal ram region.
+            // We should probably define it as such, as well as the other
+            // 0xdfXX_XXXX TCM code and data regions on D78X
+            i = address - 0xdffc0000;
+            if(type & MODE_WRITE)
+            {
+                tables[i] = value;
+            }
+            else
+            {
+                ret = tables[i];
+            }
+            break;
+    }
+
+    io_log("BOOTX", address, type, value, ret, msg, 0, 0);
+    return ret;
+}
+
 
 unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {

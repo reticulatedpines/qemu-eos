@@ -444,6 +444,7 @@ unsigned int eos_handle_rom_id(unsigned int parm, unsigned int address, unsigned
 unsigned int eos_handle_adtg_dma(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 
 unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
+unsigned int eos_handle_boot_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_dummy_dev_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
 unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned char type, unsigned int value);
