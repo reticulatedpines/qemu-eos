@@ -2451,11 +2451,11 @@ static int eos_handle_card_led(unsigned int parm, unsigned int address, unsigned
                                || value == 0x800C00   /* 7D */
                                || value == 0xE000000) ? -1 : 0;
         }
-        
+
         /* this will trigger if somebody writes an invalid LED ON/OFF code */
         assert(eos_state->card_led);
     }
-    
+
     io_log("GPIO", address, type, value, ret, msg, 0, 0);
     return ret;
 }
@@ -6737,18 +6737,6 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
 
     switch (address)
     {
-        // Digic X hacks from kitor
-        // FIXME kitor please add some comments on why required
-        case 0xDEF00014:
-            ret = -1;
-            break;
-        case 0xdef00020:
-            ret = 0x60;
-            break;
-        case 0xdef00040:
-            ret = 0xFFFFFFFF;
-            break;
-        // end kitor hacks
         case 0xD20B071C:
         case 0xD0034068:
         case 0xD0034020:
@@ -6978,6 +6966,13 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
         case 0xDE000020:
         case 0xD7301000:
             msg = "M50 loop";
+            ret = rand();
+            break;
+
+        case 0xDEF00014:
+        case 0xDEF00020:
+        case 0xDEF00000:
+            msg = "R6 loop";
             ret = rand();
             break;
 
