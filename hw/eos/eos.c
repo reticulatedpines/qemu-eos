@@ -2948,21 +2948,21 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
                     {
                         MMIO_VAR(enabled[target_int]);
                         iar = target_int;
-                    }
 
-                    // 0xa is required to wake cpu1 from a wfi loop
-                    // while cpu0 does early init.  See e.g. 200D 1.0.1
-                    // 0xe0004d30
-                    fprintf(stderr, "0x%x: cpu %d sending SGI 0x%x\n",
-                            current_cpu->cpu_index ? eos_state->cpu1->env.regs[14] :
-                                                     eos_state->cpu0->env.regs[14],
-                            current_cpu->cpu_index,
-                            value & 0xffff);
-                    assert(current_cpu->cpu_index < 2);
-                    if (current_cpu->cpu_index == 0)
-                        cpu_interrupt(CPU(eos_state->cpu1), CPU_INTERRUPT_HARD);
-                    else
-                        cpu_interrupt(CPU(eos_state->cpu0), CPU_INTERRUPT_HARD);
+                        // 0xa is required to wake cpu1 from a wfi loop
+                        // while cpu0 does early init.  See e.g. 200D 1.0.1
+                        // 0xe0004d30
+                        fprintf(stderr, "0x%x: cpu %d sending SGI 0x%x\n",
+                                current_cpu->cpu_index ? eos_state->cpu1->env.regs[14] :
+                                                         eos_state->cpu0->env.regs[14],
+                                current_cpu->cpu_index,
+                                value & 0xffff);
+                        assert(current_cpu->cpu_index < 2);
+                        if (current_cpu->cpu_index == 0)
+                            cpu_interrupt(CPU(eos_state->cpu1), CPU_INTERRUPT_HARD);
+                        else
+                            cpu_interrupt(CPU(eos_state->cpu0), CPU_INTERRUPT_HARD);
+                    }
                 }
 
             }
