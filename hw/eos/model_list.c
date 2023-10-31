@@ -754,6 +754,18 @@ struct eos_model_desc eos_model_list[] = {
         .max_cpus               = 2,
     },
     {
+        .name                   = MODEL_NAME_EOSR5,
+        .digic_version          = 10,
+        .ram_size               = 0x40000000,   /* unknown. assuming 1GB for now */
+        .card_led_address       = 0xD22390C0,
+        .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
+        .rom0_size              = 0x04000000,   /* 64MB (main ROM) */
+        .rom1_size              = 0x04000000,   /* 64MB (secondary ROM) */
+        .uart_rx_interrupt      = 0x15D,        // seem still valid
+        .uart_tx_interrupt      = 0x16D,
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementi     ng it.
+    },
+    {
         .name                   = MODEL_NAME_EOSR6,
         .digic_version          = 10,
         .ram_size               = 0x40000000,   /* unknown. assuming 1GB for now */

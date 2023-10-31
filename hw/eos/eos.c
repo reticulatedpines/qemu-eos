@@ -314,6 +314,13 @@ static void eos_EOSR_machine_init(MachineClass *mc)
     mc->max_cpus = 2; // wants to be in sync with value in model_list.c
 }
 
+static void eos_EOSR5_machine_init(MachineClass *mc)
+{
+    mc->desc = "Canon EOS R5";
+    mc->init = eos_init;
+    mc->max_cpus = 2; // wants to be in sync with value in model_list.c
+}
+
 static void eos_EOSR6_machine_init(MachineClass *mc)
 {
     mc->desc = "Canon EOS R6";
@@ -381,6 +388,7 @@ DEFINE_MACHINE(MODEL_NAME_800D, eos_800D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_850D, eos_850D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSM5, eos_EOSM5_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSR, eos_EOSR_machine_init)
+DEFINE_MACHINE(MODEL_NAME_EOSR5, eos_EOSR5_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSR6, eos_EOSR6_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSRP, eos_EOSRP_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSM50, eos_EOSM50_machine_init)
@@ -508,6 +516,9 @@ EOSRegionHandler eos_handlers[] =
     { "Interrupt",    0xD02C0200, 0xD02C02FF, eos_handle_intengine, 3 },    // 5D3 eeko
     { "Interrupt",    0xC1000000, 0xC100FFFF, eos_handle_intengine_gic, 7 },// D7
     { "Interrupt",    0xD0211000, 0xD0211FFF, eos_handle_intengine, 8 },    /* first core in D8 */
+    { "Interrupt",    0xD0231000, 0xD0231FFF, eos_handle_intengine, 9 },    /* D8 CPU1 */
+    { "Interrupt",    0xD231A000, 0xD231AFFF, eos_handle_intengine, 4 },    /* DX CPU0 */
+    { "Interrupt",    0xD233A000, 0xD233AFFF, eos_handle_intengine, 5 },    /* DX CPU1 */
     { "Multicore",    0xC1100000, 0xC110FFFF, eos_handle_multicore, 7 },    // D7
     { "Timers",       0xC0210000, 0xC0210FFF, eos_handle_timers, 0 },       // DIGIC 4/5/6 countdown timers
     { "Timers",       0xD02C1500, 0xD02C15FF, eos_handle_timers, 2 },       // Eeko countdown timer
@@ -517,6 +528,7 @@ EOSRegionHandler eos_handlers[] =
     { "Timer",        0xD020000C, 0xD020000C, eos_handle_digic_timer, 3 },  /* D8 */
     { "UTimer",       0xD4000240, 0xD4000440, eos_handle_utimer, 1 },       // D6: timers 9...16
     { "UTimer",       0xD0200240, 0xD0200440, eos_handle_utimer, 2 },       /* D8: same? */
+    { "UTimer",       0xD2300240, 0xD2300440, eos_handle_utimer, 3 },       /* DX: same? */
     { "HPTimer",      0xC0243000, 0xC0243FFF, eos_handle_hptimer, 0 },      // DIGIC 2/3/4/5/6 HPTimers
     { "GPIO",         0xC0220000, 0xC022FFFF, eos_handle_gpio, 0 },
     { "Basic",        0xC0100000, 0xC0100FFF, eos_handle_basic, 0 },
@@ -533,9 +545,9 @@ EOSRegionHandler eos_handlers[] =
     { "SDIOM50",      0xD0740000, 0xD0740FFF, eos_handle_sdio, 0x50 },
 
     { "SDIOR6_1",     0xD2B10000, 0xD2B10FFF, eos_handle_sdio, 0x50 },
-    { "SDDMAR6_1",    0xD2B11000, 0xD2B11FFF, eos_handle_sddma_dx, 0x51 },
     /* below are commented out as qemu implements only one SD controller
      * This should be easy to overcome, but was not needed for now. */
+    //{ "SDDMAR6_1",    0xD2B11000, 0xD2B11FFF, eos_handle_sddma_dx, 0x51 },
     //{ "SDIOR6_2",     0xD2B20000, 0xD2B20FFF, eos_handle_sdio, 0x50 },
     //{ "SDDMAR6_2",    0xD2B21000, 0xD2B11FFF, eos_handle_sddma_dx, 0x51 },
 
@@ -620,6 +632,7 @@ EOSRegionHandler eos_handlers[] =
 
     { "ROMID",        0xBFE01FD0, 0xBFE01FDF, eos_handle_rom_id, 0 },
     { "ROMID",        0xD5100010, 0xD5100010, eos_handle_rom_id, 1 },
+    { "ROMID",        0xDFFC4FB0, 0xDFFC4FBF, eos_handle_rom_id, 2 }, // digic X
 
     { "DIGICX",       0xd2000000, 0xd21fffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2210000, 0xd22fffff, eos_handle_digicX, 0 },
@@ -1715,7 +1728,7 @@ static void *eos_init_cpu(void)
     {
         eos_state->cpu1 = ARM_CPU(cpu_create(cpu_name));
         assert(eos_state->cpu1);
-        CPU(eos_state->cpu1)->halted = 1;
+        CPU(eos_state->cpu1)->halted = 0;
         assert(eos_state->model->max_cpus < 3); // not yet supported, none exist yet
     }
 
@@ -2451,7 +2464,7 @@ unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned
             assert(eos_state->cpu1);
             #if 0
             CPU(eos_state->cpu1)->halted = 0;
-            printf(KLRED"Wake up CPU1\n"KRESET);
+            printf(KLRED"Wake up CPU1"KRESET"\n");
             #endif
             ret = 1;
             break;
@@ -2511,7 +2524,7 @@ unsigned int eos_handle_multicore(unsigned int parm, unsigned int address, unsig
             assert(eos_state->cpu1);
             #if 0
             CPU(s->cpu1)->halted = 0;
-            printf(KLRED"Wake Up CPU1\n"KRESET);
+            printf(KLRED"Wake Up CPU1"KRESET"\n");
             #endif
             break;
 
@@ -2597,6 +2610,7 @@ unsigned int eos_handle_intengine(unsigned int parm, unsigned int address, unsig
         case 0xC0201004:    /* DIGIC 4,5 (returns irq_id << 2) */
         case 0xD4011000:    /* DIGIC 6,7 */
         case 0xD0211000:    /* DIGIC 8 */
+        case 0xD231A000:    /* DIGIC X */
 
         case 0xD02C0290:    /* 5D3 EEKO */
             if(type & MODE_WRITE)
@@ -2627,6 +2641,7 @@ unsigned int eos_handle_intengine(unsigned int parm, unsigned int address, unsig
         case 0xC0201010:    /* DIGIC <= 5 */
         case 0xD4011010:    /* DIGIC 6,7 */
         case 0xD0211010:    /* DIGIC 8 */
+        case 0xD231A010:    /* DIGIC X */
         case 0xD02C029C:    /* 5D3 EEKO */
             if(type & MODE_WRITE)
             {
@@ -2656,6 +2671,7 @@ unsigned int eos_handle_intengine(unsigned int parm, unsigned int address, unsig
         case 0xC0201200:    /* DIGIC <= 5 */
         case 0xD4011200:    /* DIGIC 6,7 */
         case 0xD0211200:    /* DIGIC 8 */
+        case 0xD231A200:    /* DIGIC X */
         case 0xD02C02CC:    /* 5D3 EEKO */
             if(type & MODE_WRITE)
             {
@@ -2693,6 +2709,7 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
 
     static int enabled[32] = {0};
     static int target[1024] = {0};
+    static int iar = 0x20;
 
     switch (address & 0xFFFF)
     {
@@ -2706,13 +2723,71 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
         /* Interrupt Controller CPU Interface */
         case 0x0100 ... 0x01FF:
         {
-            module = "GICC";
+            module = "GIC CPUint";
             switch (address & 0xFF)
             {
+                case 0:
+                {
+                    msg = "GICC_CTLR";
+                    break;
+                }
+                case 4:
+                {
+                    msg = "GICC_PMR";
+                    break;
+                }
                 case 0x0C:
                 {
                     msg = "GICC_IAR";
-                    ret = (current_cpu->cpu_index) ? 0x0A : 0x20;
+                    //ret = (current_cpu->cpu_index) ? 0x0A : 0x20;
+                    ret = 0x20;
+                    if (type & MODE_READ)
+                    {
+                        if (current_cpu->cpu_index == 0
+                            && value == 0
+                            && iar == 0x20)
+                        { // this is very spammy, seems "normal" and does nothing?
+                        }
+                        else
+                        {
+                            fprintf(stderr, "0x%x: cpu %d ack SGI 0x%x, iar: 0x%x\n",
+                                    current_cpu->cpu_index ? eos_state->cpu1->env.regs[14] :
+                                                             eos_state->cpu0->env.regs[14],
+                                    current_cpu->cpu_index,
+                                    value,
+                                    iar);
+                        }
+                        if (iar != 0x20)
+                        { // some valid SGI, which we should have raised,
+                          // via cpu_interrupt(), further down in the 0xf00 case
+
+                            // reading from GICC_IAR clears the interrupt
+                            assert(current_cpu->cpu_index < 2);
+                            if (current_cpu->cpu_index == 0)
+                                cpu_reset_interrupt(CPU(eos_state->cpu0), CPU_INTERRUPT_HARD);
+                            else
+                                cpu_reset_interrupt(CPU(eos_state->cpu1), CPU_INTERRUPT_HARD);
+                        }
+                        ret = iar;
+                    }
+                    //fprintf(stderr, "GICC_IAR : cpu %d, iar: %d, ret: %d\n",
+                    //        current_cpu->cpu_index,
+                    //        iar,
+                    //        ret);
+                    break;
+                }
+                case 0x10:
+                {
+                    msg = "GICC_EOIR";
+                    if (type & MODE_WRITE)
+                    {
+                        ret = value;  // unsure
+                        iar = 0x20;
+                    }
+                    //fprintf(stderr, "GICC_EOIR: cpu %d, iar: %d, ret: %d\n",
+                    //        current_cpu->cpu_index,
+                    //        iar,
+                    //        ret);
                     break;
                 }
             }
@@ -2725,8 +2800,14 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
             module = "GICD";
             switch (address & 0xFFF)
             {
+                case 0:
+                {
+                    msg = "ICDDCR";
+                    break;
+                }
                 case 0x100 ... 0x17C:
                 {
+                    // enables forwarding
                     msg = "GICD_ISENABLER%d (1C0+%02Xh)";
                     int word = ((address & 0xFFF) - 0x100) / 4;
                     msg_arg1 = word;
@@ -2735,9 +2816,9 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
                     MMIO_VAR(enabled[word]);
                     break;
                 }
-
                 case 0x180 ... 0x1FC:
                 {
+                    // clears forwarding
                     msg = "GICD_ICENABLER%d (1C0+%02Xh)";
                     int word = ((address & 0xFFF) - 0x180) / 4;
                     msg_arg1 = word;
@@ -2748,9 +2829,14 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
                     }
                     break;
                 }
-
+                case 0x400 ... 0x4FF:
+                {
+                    msg = "ICDIPRn";
+                    break;
+                }
                 case 0x800 ... 0x880:
                 {
+                    // target cpu
                     msg = "GICD_ITARGETSR%d (1C0+%02Xh)";
                     int id = ((address & 0xFFFF) - 0x1800);
                     msg_arg1 = id;
@@ -2760,16 +2846,28 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
                 }
 
                 case 0xf00:
-                { // software interrupt?
-                    msg = "GICD software int?";
-                    // SJE should we pass all values? 0xa is required to wake cpu1
-                    // from a wfi loop while cpu0 does early init.  See e.g. 200D 1.0.1
-                    // 0xe0004d30
-                    if ((value & 0xffff) == 0xa)
+                { // software generated interrupt
+                    msg = "ICDSGIR";
+                    int target_int = value & 0xf;
+                    if(type && MODE_WRITE)
                     {
-                        eos_mem_write(0xc100010c, &value, 1);
-                        cpu_interrupt(CPU(eos_state->cpu1), 0xa);
+                        MMIO_VAR(enabled[target_int]);
+                        iar = target_int;
                     }
+
+                    // 0xa is required to wake cpu1 from a wfi loop
+                    // while cpu0 does early init.  See e.g. 200D 1.0.1
+                    // 0xe0004d30
+                    fprintf(stderr, "0x%x: cpu %d sending SGI 0x%x\n",
+                            current_cpu->cpu_index ? eos_state->cpu1->env.regs[14] :
+                                                     eos_state->cpu0->env.regs[14],
+                            current_cpu->cpu_index,
+                            value & 0xffff);
+                    assert(current_cpu->cpu_index < 2);
+                    if (current_cpu->cpu_index == 0)
+                        cpu_interrupt(CPU(eos_state->cpu1), CPU_INTERRUPT_HARD);
+                    else
+                        cpu_interrupt(CPU(eos_state->cpu0), CPU_INTERRUPT_HARD);
                 }
 
             }
@@ -6799,8 +6897,8 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
         case 0xD2101504:
             msg = "Wake up CPU1?";       /* M5: wake up the second CPU? */
             assert(eos_state->cpu1);
-            CPU(eos_state->cpu1)->halted = 0;
-            printf(KLRED"Wake up CPU1\n"KRESET);
+            //CPU(eos_state->cpu1)->halted = 0;
+            printf(KLRED"Wake up CPU1"KRESET"\n");
             break;
 
         case 0xD0110404:
@@ -6808,7 +6906,7 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             assert(eos_state->cpu1);
             #if 0
             CPU(eos_state->cpu1)->halted = 0;
-            printf(KLRED"Wake up CPU1\n"KRESET);
+            printf(KLRED"Wake up CPU1"KRESET"\n");
             #endif
             ret = 1;
             break;

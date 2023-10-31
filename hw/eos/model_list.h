@@ -46,6 +46,7 @@
 #define MODEL_NAME_EOSM50 "M50"
 #define MODEL_NAME_EOSRP "RP"
 #define MODEL_NAME_EOSR "R"
+#define MODEL_NAME_EOSR5 "R5"
 #define MODEL_NAME_EOSR6 "R6"
 
 enum { ram_extra_array_len = 2 };
