@@ -52,6 +52,7 @@
 #define MODEL_NAME_EOSR6 "R6"
 #define MODEL_NAME_SX740 "SX740"
 #define MODEL_NAME_SX70 "SX70"
+#define MODEL_NAME_XF605 "XF605"
 
 enum { ram_extra_array_len = 2 };
 

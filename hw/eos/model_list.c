@@ -828,6 +828,18 @@ struct eos_model_desc eos_model_list[] = {
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
     },
     {
+        .name                   = MODEL_NAME_XF605,
+        .digic_version          = 10,
+        .ram_size               = 0x40000000,   /* unknown. assuming 1GB for now */
+        .card_led_address       = 0xD22390C2,
+        .current_task_addr      = 0x28,         /* fixme: read from virtual memory */
+        .rom0_size              = 0x04000000,   /* 64MB (main ROM) */
+        .rom1_size              = 0x01000000,   /* 16MB (secondary ROM) */
+        .uart_rx_interrupt      = 0xDD,
+        .uart_tx_interrupt      = 0xED,
+        .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+    },
+    {
         .name = NULL,
         .digic_version = 0,
     }

@@ -370,6 +370,13 @@ static void eos_SX740_machine_init(MachineClass *mc)
     mc->max_cpus = 2; // wants to be in sync with value in model_list.c
 }
 
+static void eos_XF605_machine_init(MachineClass *mc)
+{
+    mc->desc = "Canon XF605";
+    mc->init = eos_init;
+    mc->max_cpus = 2; // wants to be in sync with value in model_list.c
+}
+
 // This macro hides three function definitions and a call.
 // I don't like this but it's the QOM style I believe.
 //
@@ -424,6 +431,7 @@ DEFINE_MACHINE(MODEL_NAME_EOSR6, eos_EOSR6_machine_init)
 DEFINE_MACHINE(MODEL_NAME_EOSRP, eos_EOSRP_machine_init)
 DEFINE_MACHINE(MODEL_NAME_SX70, eos_SX70_machine_init)
 DEFINE_MACHINE(MODEL_NAME_SX740, eos_SX740_machine_init)
+DEFINE_MACHINE(MODEL_NAME_XF605, eos_XF605_machine_init)
 
 EOSState *eos_state;
 

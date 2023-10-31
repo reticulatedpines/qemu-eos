@@ -90,7 +90,8 @@ def parse_args():
                   "EOSM", "EOSM10", "EOSM2", "EOSM3", "EOSM5",
                   "M50", "M6mk2",
                   "R", "R5", "R6", "RP",
-                  "SX70", "SX740"]
+                  "SX70", "SX740",
+                  "XF605"]
     parser.add_argument("model",
                         choices=known_cams,
                         help="Name of model to emulate, required")
