@@ -674,7 +674,8 @@ EOSRegionHandler eos_handlers[] =
     { "ROMID",        0xD5100010, 0xD5100010, eos_handle_rom_id, 1 },
     { "ROMID",        0xDFFC4FB0, 0xDFFC4FBF, eos_handle_rom_id, 2 }, // digic X
 
-    { "DIGICX",       0xd2100000, 0xd21fffff, eos_handle_digicX, 0 },
+    { "DIGICX",       0xd2000000, 0xd201ffff, eos_handle_digicX, 0 },
+    { "DIGICX",       0xd2100000, 0xd213ffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2210000, 0xd22fffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2600000, 0xd26fffff, eos_handle_digicX, 1 },
     { "DIGICX",       0xd2a00000, 0xd2afffff, eos_handle_digicX, 2 },
@@ -685,12 +686,12 @@ EOSRegionHandler eos_handlers[] =
     { "DUMMYX",       0xce340010, 0xce34ffff, eos_handle_dummy_dev_digicX, 2 },
     { "DUMMYX",       0xd0340010, 0xd034ffff, eos_handle_dummy_dev_digicX, 3 },
 
-    { "DIGIC6",       0xD0000000, 0xDFFFFFFF, eos_handle_digic6, 0 },
+    { "DIGIC6",       0xD0000000, 0xDEFFFFFF, eos_handle_digic6, 0 },
     { "DIGIC6",       0xC8100000, 0xC8100FFF, eos_handle_digic6, 1 },
 
     { "BOOT8",        0xBFE01FC4, 0xBFE01FCF, eos_handle_boot_digic8, 0 },
     { "BOOTX",        0xDFFC4FA0, 0xDFFC4FAF, eos_handle_boot_digicX, 0 },
-    { "BOOTX",        0xdffc0000, 0xDFFC48ff, eos_handle_boot_digicX, 0 },
+    { "BOOTX",        0xD2262000, 0xD2263000, eos_handle_boot_digicX, 0 },
 
     { "ML helpers",   0xCF123000, 0xCF1230FF, eos_handle_ml_helpers, 0 },
     { "ML helpers",   0xC0123400, 0xC01234FF, eos_handle_ml_helpers, 1 },
@@ -1770,7 +1771,10 @@ static void *eos_init_cpu(void)
     {
         eos_state->cpu1 = ARM_CPU(cpu_create(cpu_name));
         assert(eos_state->cpu1);
-        CPU(eos_state->cpu1)->halted = 0;
+        CPU(eos_state->cpu1)->halted = 0; // D7 and D8 boot process works fine with both on
+        if (eos_state->model->digic_version == 10)
+            CPU(eos_state->cpu1)->halted = 1; // DX starts with one off to avoid bad
+                                              // race around MMU table access
         assert(eos_state->model->max_cpus < 3); // not yet supported, none exist yet
     }
 
@@ -2565,11 +2569,17 @@ unsigned int eos_handle_digicX(unsigned int parm, unsigned int address, unsigned
         case 0xd2220404:
             msg = "Wake up CPU1?";       /* R6: wake up the second CPU? */
             assert(eos_state->cpu1);
-            #if 0
+            #if 1
             CPU(eos_state->cpu1)->halted = 0;
             printf(KLRED"Wake up CPU1"KRESET"\n");
             #endif
             ret = 1;
+            break;
+        case 0xd2262000: // see e.g. XF605 e0006952:
+                         //  if (_DAT_d2262000 << 0x1d < 0) {
+                         //    pcVar2 = "o"; // the third o in BootLoader
+            msg = "unknown hardware init?";
+            return 0xffffffff;
             break;
         case 0xD2030000:
             //msg = "bootloader, card mout related - for CFe";
@@ -2952,7 +2962,7 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
                 { // software generated interrupt
                     msg = "ICDSGIR";
                     int target_int = value & 0xf;
-                    if(type && MODE_WRITE)
+                    if(target_int && type && MODE_WRITE)
                     {
                         MMIO_VAR(enabled[target_int]);
                         iar = target_int;
@@ -6705,30 +6715,15 @@ unsigned int eos_handle_boot_digic8(unsigned int parm, unsigned int address, uns
 
 unsigned int eos_handle_boot_digicX(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
-    const char *msg = 0;
+    const char *msg = NULL;
     unsigned int ret = 0;
-    unsigned int tables[0x4800] = {0};
-    unsigned int i = 0;
 
     switch (address)
     {
         case 0xdffc4fa0: // is it valid only for R6?
             msg = "CPU1 Boot address";
             break;
-        case 0xdffc0000 ... 0xdffc48ff: // mmu tables ram copy
-            // SJE FIXME this is just a normal ram region.
-            // We should probably define it as such, as well as the other
-            // 0xdfXX_XXXX TCM code and data regions on D78X
-            i = address - 0xdffc0000;
-            if(type & MODE_WRITE)
-            {
-                tables[i] = value;
-            }
-            else
-            {
-                ret = tables[i];
-            }
-            break;
+
     }
 
     io_log("BOOTX", address, type, value, ret, msg, 0, 0);
