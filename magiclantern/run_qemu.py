@@ -61,6 +61,7 @@ def main():
                         cam,
                         verbose=True,
                         sd_file=sd_file, cf_file=cf_file,
+                        stdout="qemu.stdout", stderr="qemu.stderr",
                         gdb_port=gdb_port,
                         boot=args.boot, d_args=args.d_args) as q:
             q.qemu_process.wait()
@@ -79,7 +80,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=description)
 
     known_cams = ["1000D", "100D", "1100D", "1200D", "1300D",
-                  "200D",
+                  "200D", "2000D",
                   "400D", "40D", "450D",
                   "500D", "50D", "550D", "5D", "5D2", "5D3", "5D3eeko", "5D4", "5D4AE",
                   "600D", "60D", "650D", "6D", "6D2",

@@ -151,6 +151,12 @@ static void eos_1300D_machine_init(MachineClass *mc)
     mc->init = eos_init;
 }
 
+static void eos_2000D_machine_init(MachineClass *mc)
+{
+    mc->desc = "Canon EOS 2000D";
+    mc->init = eos_init;
+}
+
 static void eos_A1100_machine_init(MachineClass *mc)
 {
     mc->desc = "Canon EOS A1100";
@@ -397,6 +403,7 @@ DEFINE_MACHINE(MODEL_NAME_600D, eos_600D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_1100D, eos_1100D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_1200D, eos_1200D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_1300D, eos_1300D_machine_init)
+DEFINE_MACHINE(MODEL_NAME_2000D, eos_2000D_machine_init)
 DEFINE_MACHINE(MODEL_NAME_A1100, eos_A1100_machine_init)
 DEFINE_MACHINE(MODEL_NAME_5D3, eos_5D3_machine_init)
 DEFINE_MACHINE(MODEL_NAME_5D3eeko, eos_5D3eeko_machine_init)
@@ -677,6 +684,7 @@ EOSRegionHandler eos_handlers[] =
     { "DIGICX",       0xd2000000, 0xd201ffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2100000, 0xd213ffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2210000, 0xd22fffff, eos_handle_digicX, 0 },
+//    { "DIGICX",       0xd2230000, 0xd23fffff, eos_handle_digicX, 0 },
     { "DIGICX",       0xd2600000, 0xd26fffff, eos_handle_digicX, 1 },
     { "DIGICX",       0xd2a00000, 0xd2afffff, eos_handle_digicX, 2 },
     { "DIGICX",       0xd2c00000, 0xd2cfffff, eos_handle_digicX, 3 },
@@ -742,7 +750,9 @@ static void eos_rom_write(void *opaque, hwaddr addr, uint64_t value, uint32_t si
     uint32_t rom_addr = (rom_id) ? ROM1_ADDR : ROM0_ADDR;;
     uint32_t address = rom_addr + addr;
 
-    if (strcmp(s->model->name, MODEL_NAME_1300D) == 0)
+    if ((strcmp(s->model->name, MODEL_NAME_1300D) == 0)
+        || (strcmp(s->model->name, MODEL_NAME_2000D) == 0)
+    )
     {
         if (address == 0xF8000000 && size == 1 && value == 6)
         {
@@ -3515,9 +3525,11 @@ unsigned int eos_handle_gpio(unsigned int parm, unsigned int address, unsigned c
             break;
 
       case 0xF48C:
-            if(strcmp(eos_state->model->name, MODEL_NAME_1300D) == 0)
+            if((strcmp(eos_state->model->name, MODEL_NAME_1300D) == 0)
+               || (strcmp(eos_state->model->name, MODEL_NAME_2000D) == 0)
+            )
             {
-                /* 1300D: return 0 here to bypass "System & Display Check & Adjustment program" */
+                /* 1300D, 2000D: return 0 here to bypass "System & Display Check & Adjustment program" */
                 /* 0x4000000 = HDMI disconnected */
                 msg = "System check";
                 ret = 0x4000000;    
