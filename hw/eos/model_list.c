@@ -247,6 +247,28 @@ struct eos_model_desc eos_model_list[] = {
       //.imgpowdet_register     = 0xC022F484,   /* Image Power Failure (FIXME: shared with mpu_status_register)  */
       //.imgpowdet_register_bit = 0x00080000,   /* register and bit checked to print that message */
     },
+{
+        .name                   = MODEL_NAME_2000D,
+        .digic_version          = 4,
+        .ram_size               = 0x20000000,   /* 512MB */
+        .rom0_size              = 0x02000000,   /* 32MB */
+        .rom1_size              = 0x02000000,   /* 32MB */
+        .firmware_start         = 0xFF0C0000,
+        .dryos_timer_id         = 1,            /* set to 10ms; run with -d io,int,v to find it */
+        .dryos_timer_interrupt  = 0x09,         /* enabled right before setting the timer value */
+          .mpu_request_register   = 0xC022D0C4,   /* written in mpu_send (run with -d io) */
+          .mpu_request_bitmask    = 0x00100000,   /* 0x83DC00 request, 0x93D800 idle */
+          .mpu_status_register    = 0xC022F484,   /* read in SIO3_ISR and MREQ_ISR (tst 0x40000) */
+        .current_task_addr      = 0x31170,
+          .sd_driver_interrupt    = 0x4B,
+        .sd_dma_interrupt       = 0x32,
+          .uart_rx_interrupt      = 0x38,
+        .rtc_time_correct       = 0x31,         /* RTC_TIME_CORRECT_CHANGE */
+          .rtc_cs_register        = 0xC022D0B8,   /* GPIO set/cleared in rtc_read */
+        .dedicated_movie_mode   = 1,
+      .imgpowdet_register     = 0xC022F484,   /* Image Power Failure (FIXME: shared with mpu_status_register)  */
+      .imgpowdet_register_bit = 0x00080000,   /* register and bit checked to print that message */
+    },
     {
         .name                   = MODEL_NAME_A1100,
         .digic_version          = 4,

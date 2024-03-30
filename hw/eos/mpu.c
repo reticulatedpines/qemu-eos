@@ -713,9 +713,9 @@ static struct {
     
     { 0xE049,   BGMT_WHEEL_UP,          "PgUp, PgDn",   "Sub dial (rear scrollwheel)"   },
     { 0xE051,   BGMT_WHEEL_DOWN,                                                        },
-
-    { 0x001A,   BGMT_WHEEL_LEFT,        "[ and ]",      "Main dial (top scrollwheel)",  },
-    { 0x001B,   BGMT_WHEEL_RIGHT,                                                       },
+// Changed
+    { 0x0033,   BGMT_WHEEL_LEFT,        ", and .",      "Main dial (top scrollwheel)",  },
+    { 0x0034,   BGMT_WHEEL_RIGHT,                                                       },
 
     { 0x0039,   BGMT_PRESS_SET,         "SPACE",        "SET",                          },
     { 0x00B9,   BGMT_UNPRESS_SET,                                                       },
@@ -772,6 +772,8 @@ static int translate_scancode_2(int scancode, int first_code, int allow_auto_rep
     }
 
     int code = (first_code << 8) | scancode;
+
+//    MPU_DPRINTF0("hi %x", code);
 
     if (code == 0x003B)
     {
@@ -947,12 +949,14 @@ void mpu_send_keypress(int keycode)
 {
     /* good news: most MPU button codes appear to be the same across all cameras :) */
     int key = translate_scancode(keycode);
+//    MPU_DPRINTF0("sendkey %x %x",keycode, key);
     if (key <= 0)
     {
         MPU_DPRINTF0("Key not recognized: %x\n", keycode);
         return;
     }
     
+    MPU_DPRINTF0("Key: %x\n", key);
     if (key == 0x00F1F1F1)
     {
         show_keyboard_help();
@@ -1236,6 +1240,7 @@ void mpu_spells_init(void)
     MPU_SPELL_SET_OTHER_CAM(1100D, 60D)
     MPU_SPELL_SET_OTHER_CAM(1200D, 60D)
     MPU_SPELL_SET_OTHER_CAM(1300D, 600D)
+    MPU_SPELL_SET_OTHER_CAM(2000D, 600D)
     MPU_SPELL_SET_OTHER_CAM(40D, 50D)
 
     MPU_SPELL_SET_OTHER_CAM(650D, 700D)
@@ -1271,6 +1276,7 @@ void mpu_spells_init(void)
     MPU_BUTTON_CODES(1100D)
     MPU_BUTTON_CODES(1200D)
     MPU_BUTTON_CODES_OTHER_CAM(1300D, 1200D)
+    MPU_BUTTON_CODES_OTHER_CAM(2000D, 1200D)
     MPU_BUTTON_CODES(450D)
     MPU_BUTTON_CODES_OTHER_CAM(1000D, 450D)
     MPU_BUTTON_CODES(40D)
