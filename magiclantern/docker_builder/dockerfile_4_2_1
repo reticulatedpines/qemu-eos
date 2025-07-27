@@ -1,5 +1,4 @@
-#FROM debian:bullseye-slim
-FROM debian:stretch-slim
+FROM debian:bullseye-slim
 LABEL description="Magiclantern qemu-eos builder"
 
 # clean is not needed with official Debian images,
