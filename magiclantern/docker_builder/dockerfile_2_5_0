@@ -1,6 +1,4 @@
-FROM debian:stretch-slim
-# NB when updating from Stretch, apt-get needs
-# to use python2, not python
+FROM debian:bullseye-slim
 LABEL description="Magiclantern qemu-eos builder"
 
 # clean is not needed with official Debian images,
@@ -11,7 +9,7 @@ LABEL description="Magiclantern qemu-eos builder"
 RUN apt-get update && \
 apt-get install -qy --no-install-recommends \
 build-essential \
-python \
+python2 \
 wget \
 unzip \
 pkg-config \
