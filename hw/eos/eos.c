@@ -1983,6 +1983,18 @@ static void patch_R(void)
     uint32_t bx_lr = 0x4770;        /* Thumb 'bx lr' */
     fprintf(stderr, "[R] Patching 0xE05ED578 (DryOS assert -> return)\n");
     MEM_WRITE_ROM(0xE05ED578, (uint8_t*) &bx_lr, 2);
+
+    /* Early-boot property null-derefs: some init code queries DataType
+     * 0x20000073 / 0x12000000 (GetCameraFlag) BEFORE Main/StartupDataLoad.c
+     * registers those packages, so the lookup returns NULL and the firmware
+     * dereferences it -> data abort, before StartupDataLoad ever runs. Stub
+     * both to 'return 0' (movs r0,#0; bx lr) so boot survives to the point
+     * where StartupDataLoad loads the SERVICE_DATA (0x12000000) from ROM0
+     * @0xE1FFC000. */
+    uint32_t ret0 = 0x47702000;     /* movs r0,#0 ; bx lr */
+    fprintf(stderr, "[R] Patching 0xE021F0AC + 0xE021CA38 (early property null-deref -> return 0)\n");
+    MEM_WRITE_ROM(0xE021F0AC, (uint8_t*) &ret0, 4);
+    MEM_WRITE_ROM(0xE021CA38, (uint8_t*) &ret0, 4);
 }
 
 static void patch_EOSM10(void)
