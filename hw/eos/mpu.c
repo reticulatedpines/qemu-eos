@@ -1250,6 +1250,12 @@ void mpu_spells_init(void)
         /* how to get them: http://magiclantern.fm/forum/index.php?topic=2864.msg166938#msg166938 */
     }
 
+    /* Initialise the request register to the idle state (request bit set), so
+     * the firmware's very first idle->request transition (bit going high->low)
+     * is detected. Without this, mpu.status starts at 0 and the first request
+     * is missed (e.g. EOS R: idle 0x4D0002 bit set, request 0x4C0003 bit clear). */
+    eos_state->mpu.status = eos_state->model->mpu_request_bitmask;
+
     if (0)
     {
         MPU_EPRINTF("WARNING: using bruteforce MPU spells for %s.\n", eos_state->model->name);
