@@ -342,6 +342,13 @@ typedef struct EOSState
     EDMACState edmac;
     PreproState prepro;
     struct SerialFlashState *sf;
+    /* EEPROM (SPI on SIO, RE'd for EOS R: 32KB property/config store) */
+    uint8_t *eeprom_data;
+    uint32_t eeprom_size;
+    int eep_state;          /* 0 idle, 1 want addr_hi, 2 want addr_lo, 3 data, 5 status */
+    uint32_t eep_addr;
+    uint8_t eep_rx;         /* pre-loaded byte returned on next RX read */
+    uint32_t eep_cs_last;   /* last value written to EEPROM CS GPIO (for readback) */
     uint32_t card_led;  /* 1 = on, -1 = off, 0 = not used */
     QEMUTimer *interrupt_timer;
     QEMUTimer multicore_timer_01;

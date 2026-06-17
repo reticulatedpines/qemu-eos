@@ -724,6 +724,11 @@ struct eos_model_desc eos_model_list[] = {
         .mpu_control_register   = 0xD0213004,   /* struct[0x34]; 0xC written in MREQ_ISR (live *ptr=0xD) */
         .mpu_mreq_interrupt     = 0x1A,         /* MREQ_ISR (confirmed via gdb: RegisterInterruptHandler id 0x1A) */
         .mpu_sio3_interrupt     = 0x147,        /* SIO3_ISR (confirmed via gdb) */
+        /* SPI EEPROM (32KB config/property store) - RE'd from EEPROM struct @0x4CD4 (live HW dump) + ReadBlockEEPROM FUN_e03d404e */
+        .eeprom_size            = 0x8000,       /* 32KB device (struct[0x10]=0x7F00 usable range) */
+        .eeprom_sio_ch          = 8,            /* struct[0x50]=ch7; base 0xC0820100+7*0x100 = 0xC0820800 -> SIO8 */
+        .eeprom_cs_register     = 0xD01302C4,   /* struct[0x2c]=0x2C4 + reg_write base 0xD0130000 (FUN_e03060b8) */
+        .eeprom_cs_bitmask      = 0x00010000,   /* assert=0xC0003 (bit16=0), deassert=0xD0002 (bit16=1) */
     },
     {
         .name                   = MODEL_NAME_EOSRP,
