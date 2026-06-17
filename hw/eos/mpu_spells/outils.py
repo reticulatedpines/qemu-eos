@@ -12,13 +12,20 @@ def getLongLE(d, a):
 # button names from gui.h
 def get_switch_names(camera_model):
     switch_names = {}
-    ml_dir = "../../../../../magic-lantern/platform/"
-    
+    # ML platform dir; override with ML_PLATFORM_DIR for non-default checkouts
+    ml_dir = os.environ.get("ML_PLATFORM_DIR",
+                            "../../../../../magic-lantern/platform/")
+
     # pick one platform directory for this camera (any firmware version)
-    cam_dir = [d for d in os.listdir(ml_dir) 
-                 if d.split(".")[0] == camera_model
-                 and os.path.isfile(os.path.join(ml_dir, d, "gui.h"))
-              ][0]
+    try:
+        cam_dir = [d for d in os.listdir(ml_dir)
+                     if d.split(".")[0] == camera_model
+                     and os.path.isfile(os.path.join(ml_dir, d, "gui.h"))
+                  ][0]
+    except (FileNotFoundError, IndexError):
+        # button names are only needed for GUI switch mapping, not init spells
+        eprint("get_switch_names: no platform gui.h for %s; continuing without" % camera_model)
+        return switch_names
     
     gui_h = open(os.path.join(ml_dir, cam_dir, "gui.h")).readlines()
     for l in gui_h:

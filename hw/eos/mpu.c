@@ -49,6 +49,7 @@ static int mpu_init_spell_count = 0;
 #include "mpu_spells/100D.h"
 #include "mpu_spells/EOSM.h"
 #include "mpu_spells/EOSM2.h"
+#include "mpu_spells/R.h"
 #include "mpu_spells/generic.h"
 #include "mpu_spells/bruteforce.h"
 
@@ -1229,6 +1230,7 @@ void mpu_spells_init(void)
     MPU_SPELL_SET(100D)
     MPU_SPELL_SET(EOSM)
     MPU_SPELL_SET(EOSM2)
+    MPU_SPELL_SET(R)
 
     /* 1200D works with 60D MPU spells... and BOOTS THE GUI!!! */
     /* same for 1100D */

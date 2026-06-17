@@ -717,6 +717,13 @@ struct eos_model_desc eos_model_list[] = {
         .rom0_size              = 0x02000000,   // 32MB (main ROM)
         .rom1_size              = 0x04000000,   // 64MB (secondary ROM)
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+        /* MPU interface - RE'd from ROM0 (Ghidra) + live intercom struct @0x9E60 read on real hardware via ML */
+        .mpu_request_register   = 0xD0130180,   /* struct[0x2c]=0x180 + reg_write base 0xD0130000; mpu_send writes 0x4C0003 */
+        .mpu_request_bitmask    = 0x00010000,   /* 0x4C0003 request, 0x4D0002 idle (toggling bit) */
+        .mpu_status_register    = 0xD0132180,   /* struct[0x30]=0x180 + 0xD0132000; read & 1 in SIO3_ISR */
+        .mpu_control_register   = 0xD0213004,   /* struct[0x34]; 0xC written in MREQ_ISR (live *ptr=0xD) */
+        .mpu_mreq_interrupt     = 0x2A,         /* MREQ_ISR (matches 80D, which shares SIO3=0x147; verify) */
+        .mpu_sio3_interrupt     = 0x147,        /* SIO3_ISR (confirmed in intercom_helper FUN_e008ad02) */
     },
     {
         .name                   = MODEL_NAME_EOSRP,
