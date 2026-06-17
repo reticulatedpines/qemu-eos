@@ -6991,11 +6991,18 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             ret = 1;
             break;
 
+        case 0xD98000BC:
+            /* EOS R Camif_ADC init spin-waits for bit1 of this register
+             * (while(-1 < *reg << 0x1e)); return it set so the wait exits
+             * deterministically instead of relying on rand() */
+            msg = "CamifADC ready";
+            ret = 0x2;
+            break;
+
         case 0xD7100014:
         case 0xD7100020:
         case 0xD7100000:
         case 0xD0740010:
-        case 0xD98000BC:
         case 0xDE000000:
         case 0xDE000014:
         case 0xDE000020:
