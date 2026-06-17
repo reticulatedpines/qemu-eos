@@ -722,8 +722,8 @@ struct eos_model_desc eos_model_list[] = {
         .mpu_request_bitmask    = 0x00010000,   /* 0x4C0003 request, 0x4D0002 idle (toggling bit) */
         .mpu_status_register    = 0xD0132180,   /* struct[0x30]=0x180 + 0xD0132000; read & 1 in SIO3_ISR */
         .mpu_control_register   = 0xD0213004,   /* struct[0x34]; 0xC written in MREQ_ISR (live *ptr=0xD) */
-        .mpu_mreq_interrupt     = 0x2A,         /* MREQ_ISR (matches 80D, which shares SIO3=0x147; verify) */
-        .mpu_sio3_interrupt     = 0x147,        /* SIO3_ISR (confirmed in intercom_helper FUN_e008ad02) */
+        .mpu_mreq_interrupt     = 0x1A,         /* MREQ_ISR (confirmed via gdb: RegisterInterruptHandler id 0x1A) */
+        .mpu_sio3_interrupt     = 0x147,        /* SIO3_ISR (confirmed via gdb) */
     },
     {
         .name                   = MODEL_NAME_EOSRP,
