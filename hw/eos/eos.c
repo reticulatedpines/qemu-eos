@@ -2037,12 +2037,50 @@ static void patch_R(void)
         uint8_t sf_cave[] = { 0x01,0x0e, 0xf0,0x29, 0x01,0xd1, 0x01,0x20, 0x70,0x47, 0x00,0x20, 0x70,0x47 };
         /* (2) jump at IsAddressSerialFlash entry 0xE03C1EB0: b.w 0xE001A1D0 (4 bytes) */
         uint8_t sf_jump[] = { 0x58,0xf4,0x8e,0xb9 };
-        /* (3) ReadBlockSerialFlash entry 0xE03C10C4: movs r0,#0 ; bx lr  (blank success, skip SIO) */
-        uint8_t rbsf_skip[] = { 0x00,0x20, 0x70,0x47 };
-        fprintf(stderr, "[R] INJECT_SF: F0-check cave + ReadBlockSerialFlash blank-bypass (boot reaches FW version banner)\n");
+        fprintf(stderr, "[R] INJECT_SF: F0-check cave @0xE001A1D0 + jump @0xE03C1EB0\n");
         MEM_WRITE_ROM(0xE001A1D0, sf_cave, sizeof(sf_cave));
         MEM_WRITE_ROM(0xE03C1EB0, sf_jump, sizeof(sf_jump));
-        MEM_WRITE_ROM(0xE03C10C4, rbsf_skip, sizeof(rbsf_skip));
+
+        if (getenv("EOS_R_SF_DATA"))
+        {
+            /* REAL-DATA (2026-06-18): serve the on-camera F0 property dump instead of blank.
+             * The on-camera "Dump FROM regions" tool MEM-read the F0 property regions; the
+             * F0A80000/AC/B00000 regions hold real combo-package data (F09C0000/TUNE came back
+             * blank). The R's F0 space is not memory-mapped in qemu (ROM1@0xF0000000 commented
+             * out; SF goes via serial_flash.c + the broken SIO), so: map a RAM region over the
+             * F0 SF space, fill 0xFF (erased flash), drop the dump in at its 0xA80000 offset,
+             * and repoint ReadBlockSerialFlash to a memcpy cave (reads MEM[addr]->dst) that
+             * reads the mapped real data and bypasses the broken SIO entirely. */
+            MemoryRegion *sfprop = g_new0(MemoryRegion, 1);
+            memory_region_init_ram(sfprop, NULL, "eos.sfprop", 0x1000000, &error_abort);
+            memory_region_add_subregion(eos_state->system_mem, 0xF0000000, sfprop);
+            uint8_t *p = memory_region_get_ram_ptr(sfprop);
+            memset(p, 0xFF, 0x1000000);
+            const char *df = eos_get_cam_path("R_SFDATA_F0A8.bin");
+            FILE *fp = fopen(df, "rb");
+            if (fp) {
+                size_t n = fread(p + 0xA80000, 1, 0xC0000, fp);
+                fclose(fp);
+                fprintf(stderr, "[R] SF_DATA: mapped F0 RAM + loaded %zu B dump @0xF0A80000\n", n);
+            } else {
+                fprintf(stderr, "[R] SF_DATA: dump missing (%s); F0 stays 0xFF\n", df);
+            }
+            /* memcpy cave @0xE001A200 (sfmemcpy.s): r0=addr,r1=dst,r2=len -> memcpy; return 0 */
+            uint8_t memcpy_cave[] = { 0x00,0x2a, 0x05,0xd0, 0x03,0x78, 0x0b,0x70,
+                                      0x01,0x30, 0x01,0x31, 0x01,0x3a, 0xf7,0xe7,
+                                      0x00,0x20, 0x70,0x47 };
+            uint8_t rbsf_jump[] = { 0x59,0xf4,0x9c,0xb8 };  /* b.w 0xE03C10C4 -> 0xE001A200 */
+            MEM_WRITE_ROM(0xE001A200, memcpy_cave, sizeof(memcpy_cave));
+            MEM_WRITE_ROM(0xE03C10C4, rbsf_jump, sizeof(rbsf_jump));
+            fprintf(stderr, "[R] SF_DATA: ReadBlockSerialFlash -> memcpy cave (real dump)\n");
+        }
+        else
+        {
+            /* BLANK-BYPASS: ReadBlockSerialFlash returns blank-success (movs r0,#0; bx lr) */
+            uint8_t rbsf_skip[] = { 0x00,0x20, 0x70,0x47 };
+            MEM_WRITE_ROM(0xE03C10C4, rbsf_skip, sizeof(rbsf_skip));
+            fprintf(stderr, "[R] INJECT_SF: blank-bypass (set EOS_R_SF_DATA for real dump)\n");
+        }
     }
 
     if (getenv("EOS_R_NO_PATCH"))
