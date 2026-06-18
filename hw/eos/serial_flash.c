@@ -248,6 +248,10 @@ void serial_flash_spi_write(SerialFlashState *sf, uint8_t value)
         sf->data_pointer |= (value << (8*(2 - sf->substate)));
         sf->substate++;
         if (sf->substate == 3) {
+            /* EOS R: the firmware sends SF offsets that can exceed the device size (the address
+             * range it maps spans > size); without masking, sf->data[data_pointer] reads out of
+             * bounds -> garbage -> guest data-abort. Wrap into the device (size is a power of 2). */
+            sf->data_pointer &= (sf->size - 1);
             EE_DPRINTF("Verbose: address is now: 0x%06X\n", sf->data_pointer);
             if (sf->state == 0x03) {
                 sf->read_value = sf->data[sf->data_pointer];
@@ -278,6 +282,8 @@ static void sfio_do_transfer(void)
     SDIOState *sd = &eos_state->sf->sd;
 
     // FIXME sanitize addresses, this can seriously break stuff
+    // EOS R: mask the offset into the device (the firmware maps a >size address range).
+    eos_state->sf->data_pointer &= (eos_state->sf->size - 1);
     void *source = &eos_state->sf->data[eos_state->sf->data_pointer];
     fprintf(stderr, "[EEPROM-DMA]! [0x%X] -> [0x%X] (0x%X bytes)\n", 
            eos_state->sf->data_pointer, sd->dma_addr, sd->dma_count);

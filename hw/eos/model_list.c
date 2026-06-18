@@ -729,6 +729,16 @@ struct eos_model_desc eos_model_list[] = {
         .eeprom_sio_ch          = 8,            /* struct[0x50]=ch7; base 0xC0820100+7*0x100 = 0xC0820800 -> SIO8 */
         .eeprom_cs_register     = 0xD01302C4,   /* struct[0x2c]=0x2C4 + reg_write base 0xD0130000 (FUN_e03060b8) */
         .eeprom_cs_bitmask      = 0x00010000,   /* assert=0xC0003 (bit16=0), deassert=0xD0002 (bit16=1) */
+        /* SPI serial flash (8MB) - EXPERIMENT A: M50-derived guesses (R's closest D8 sibling;
+         * M50 SF params commented at the EOSM50 block). size 0x800000 confirmed (FUN_e03c052a
+         * dumps 8MB). CS likely 0xD01302B4 (M50's; R EEPROM CS 0xD01302C4 is adjacent). Enables
+         * serial_flash.c (eos.c:2102 serial_flash_init needs workdir/R/SFDATA.BIN or it exit(1)s). */
+        .serial_flash_size        = 0x800000,
+        .serial_flash_sio_ch      = 10,  /* M50-derived; the real channel for once the SF struct
+                                          * (struct[0x30]) is injected. */
+        .serial_flash_interrupt   = 0xFE,
+        .serial_flash_cs_register = 0xD01302B4,
+        .serial_flash_cs_bitmask  = 0x00010000,
     },
     {
         .name                   = MODEL_NAME_EOSRP,

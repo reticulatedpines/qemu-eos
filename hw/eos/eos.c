@@ -1980,6 +1980,74 @@ static void patch_R(void)
      * return to the caller instead of halting the boot. Mirrors the hand-patched
      * bring-up tree. The assert takes (msg, file, line) and is treated noreturn
      * by callers, so returning simply lets them fall through (e.g. KerSem -> 7). */
+    /* EXPERIMENT (opt-in EOS_R_FORCE_DATALOAD): the Startup task FUN_e0040c3c
+     * calls FUN_e0043a7e(0x300) @0xE0040CA4 to wait for the property load, but it
+     * deadlocks on the never-created "DataLoad" semaphore (the loader task is never
+     * scheduled in qemu). Inject a stub (code cave @0xE002BDC4) that runs the
+     * loaders StartupDataLoad(FUN_e0043dd0) + FUN_e0043b98 (which read the property
+     * data from ROM and set the wait flags), then calls the wait — which now returns
+     * immediately because the flags are set. Goal: populate the property DB + clear
+     * the deadlock with real data, without the assert hacks. */
+    if (getenv("EOS_R_FORCE_DATALOAD"))
+    {
+        /* The init function @0xE0040B3A gates the DataLoad subsystem init with
+         * `cbz r5, skip` (skip create-sem FUN_e0043a6a + post-loaders FUN_e0044040).
+         * In qemu r5==0 (a hardware-state difference) so the subsystem never inits
+         * -> the Startup task deadlocks on the never-created "DataLoad" semaphore.
+         * NOP the cbz so the init ALWAYS runs (in its proper async task context,
+         * unlike a synchronous force). The property load is needed regardless. */
+        uint16_t nop = 0xBF00;  /* Thumb NOP (replaces `cbz r5,...` = 0xB12D) */
+        fprintf(stderr, "[R] FORCE_DATALOAD: NOP the cbz r5 DataLoad gate @0xE0040B3A\n");
+        MEM_WRITE_ROM(0xE0040B3A, (uint8_t*) &nop, 2);
+        /* NOTE: the deeper blocker is that the property loaders read serial-flash-
+         * backed regions (0xF0xxxxxx) via ReadBlockSerialFlash (FUN_e03c10c4), which
+         * hangs because there is no SPI serial-flash device in qemu. The real fix is
+         * to emulate that device (see eos_handle_sio_sf, WIP) -- forcing the in-memory
+         * HPCopy path (IsAddressSerialFlash->0) does NOT work: it computes an unmapped
+         * source address for SF data. */
+    }
+
+    /* EXPERIMENT (opt-in EOS_R_INJECT_SF): make the firmware's serial-flash driver work in qemu
+     * by INJECTING the SF struct (RAM 0x62BC) that InstallSerialFlash would have set up (it never
+     * runs in qemu). RE 2026-06-17/18: IsAddressSerialFlash (FUN_e03c1eb0) returns 0 unless
+     * struct[0x10]!=0, then range-checks [0x14](base)<=addr<=base+[0x18](size). ReadBlockSerialFlash
+     * (FUN_e03c10c4) bails "not install" if struct[0x10]==0, else acquires SIO on struct[0x30]
+     * (channel) and core-reads with offset = addr - struct[0x14]. So we redirect IsAddressSerialFlash
+     * to a CODE CAVE @0xE001A1D0 (free ROM0 region) that, on first call, writes the full struct
+     * (install=1, channel=10=serial_flash_sio_ch, base=0xF0000000, size=0x01000000, CS=0xD01302B4)
+     * and then returns the (addr>>24)==0xF0 check. (Just patching the F0 check alone advanced boot
+     * but looped on "not install"; ALSO skipping the install check w/o base CRASHED -- so the full
+     * struct is required.) Cave + jump assembled from sfcave.s; bytes below. */
+    if (getenv("EOS_R_INJECT_SF"))
+    {
+        /* BLANK-BYPASS (2026-06-18, validated via runtime gdb patch sio5_probe.sh): the firmware's
+         * serial-flash driver can't run in qemu -- InstallSerialFlash never dispatches, and the SIO
+         * open path (FUN_e0291b94 via the SF acquire) returns a bad handle that FUN_e03c1ee4 then
+         * dereferences -> data abort (DFAR=0x7). Two earlier attempts both stuck: (a) F0-check alone
+         * -> firmware LOOPS forever on "not install"; (b) full struct injection -> the SIO acquire
+         * CRASHES as above. This third approach lets the property loader SEE the 0xF0 region as
+         * serial-flash (so it calls ReadBlockSerialFlash instead of the unmapped HPCopy path) but
+         * stubs ReadBlockSerialFlash to return success immediately WITHOUT touching the broken SIO --
+         * i.e. blank property data. RESULT: boot advances PAST the SIO crash and the not-install loop,
+         * through several property loads (TUNE/RASEN/LENS/LENS_DATA2) to the ICU firmware version
+         * banner ("K424 ICU Firmware Version 1.8.0"), then stalls at S_PROPAD_INVALIDPARAMETER 0x20003
+         * because the property data is blank. Getting further needs the REAL 8MB serial-flash
+         * contents (a safe on-camera dump) loaded into serial_flash.c. */
+        /* (1) F0-check cave @0xE001A1D0: r1 = addr>>24; r0 = (r1==0xF0) ? 1 : 0; bx lr  (14 bytes) */
+        uint8_t sf_cave[] = { 0x01,0x0e, 0xf0,0x29, 0x01,0xd1, 0x01,0x20, 0x70,0x47, 0x00,0x20, 0x70,0x47 };
+        /* (2) jump at IsAddressSerialFlash entry 0xE03C1EB0: b.w 0xE001A1D0 (4 bytes) */
+        uint8_t sf_jump[] = { 0x58,0xf4,0x8e,0xb9 };
+        /* (3) ReadBlockSerialFlash entry 0xE03C10C4: movs r0,#0 ; bx lr  (blank success, skip SIO) */
+        uint8_t rbsf_skip[] = { 0x00,0x20, 0x70,0x47 };
+        fprintf(stderr, "[R] INJECT_SF: F0-check cave + ReadBlockSerialFlash blank-bypass (boot reaches FW version banner)\n");
+        MEM_WRITE_ROM(0xE001A1D0, sf_cave, sizeof(sf_cave));
+        MEM_WRITE_ROM(0xE03C1EB0, sf_jump, sizeof(sf_jump));
+        MEM_WRITE_ROM(0xE03C10C4, rbsf_skip, sizeof(rbsf_skip));
+    }
+
+    if (getenv("EOS_R_NO_PATCH"))
+        return;
+
     uint32_t bx_lr = 0x4770;        /* Thumb 'bx lr' */
     fprintf(stderr, "[R] Patching 0xE05ED578 (DryOS assert -> return)\n");
     MEM_WRITE_ROM(0xE05ED578, (uint8_t*) &bx_lr, 2);
