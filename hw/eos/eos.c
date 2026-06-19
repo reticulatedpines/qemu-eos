@@ -2065,6 +2065,20 @@ static void patch_R(void)
             } else {
                 fprintf(stderr, "[R] SF_DATA: dump missing (%s); F0 stays 0xFF\n", df);
             }
+            /* TUNE region (F09C0000, SF offset 0x9C0000, 0x40000=256KB): captured on-camera by the
+             * CONFIG_MMU_REMAP ReadBlockSerialFlash detour (ML/LOGS/TUNE.BIN -> R_TUNE_F09C.bin).
+             * This is the region that dumped BLANK via MEM and was the FROM-property-DB wall. Drop
+             * it in at 0x9C0000 so SearchFromProperty finds the TUNE-backed properties. Optional:
+             * absent file -> region stays 0xFF (same as before this capture existed). */
+            const char *tf = eos_get_cam_path("R_TUNE_F09C.bin");
+            FILE *tp = fopen(tf, "rb");
+            if (tp) {
+                size_t tn = fread(p + 0x9C0000, 1, 0x40000, tp);
+                fclose(tp);
+                fprintf(stderr, "[R] SF_DATA: loaded %zu B TUNE dump @0xF09C0000\n", tn);
+            } else {
+                fprintf(stderr, "[R] SF_DATA: TUNE dump missing (%s); F09C0000 stays 0xFF\n", tf);
+            }
             /* memcpy cave @0xE001A200 (sfmemcpy.s): r0=addr,r1=dst,r2=len -> memcpy; return 0 */
             uint8_t memcpy_cave[] = { 0x00,0x2a, 0x05,0xd0, 0x03,0x78, 0x0b,0x70,
                                       0x01,0x30, 0x01,0x31, 0x01,0x3a, 0xf7,0xe7,
