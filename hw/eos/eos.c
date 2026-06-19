@@ -1970,7 +1970,151 @@ static void patch_EOSM3(void)
     MEM_WRITE_ROM(0xFC3F1178, (uint8_t*) &pdword0x0, 4);
     
     fprintf(stderr, "Patching 0xFC10A312 (BmpDDev.c:554 assert)\n");
-    MEM_WRITE_ROM(0xFC10A312, (uint8_t*) &pdword0x0, 4);    
+    MEM_WRITE_ROM(0xFC10A312, (uint8_t*) &pdword0x0, 4);
+}
+
+static void patch_R(void)
+{
+    /* EOS R bring-up: neutralise the DryOS assert handler (FUN_e05ed578) so the
+     * non-fatal boot asserts (KerSem.c:314 null semaphore, property/flag checks)
+     * return to the caller instead of halting the boot. Mirrors the hand-patched
+     * bring-up tree. The assert takes (msg, file, line) and is treated noreturn
+     * by callers, so returning simply lets them fall through (e.g. KerSem -> 7). */
+    /* EXPERIMENT (opt-in EOS_R_FORCE_DATALOAD): the Startup task FUN_e0040c3c
+     * calls FUN_e0043a7e(0x300) @0xE0040CA4 to wait for the property load, but it
+     * deadlocks on the never-created "DataLoad" semaphore (the loader task is never
+     * scheduled in qemu). Inject a stub (code cave @0xE002BDC4) that runs the
+     * loaders StartupDataLoad(FUN_e0043dd0) + FUN_e0043b98 (which read the property
+     * data from ROM and set the wait flags), then calls the wait — which now returns
+     * immediately because the flags are set. Goal: populate the property DB + clear
+     * the deadlock with real data, without the assert hacks. */
+    if (getenv("EOS_R_FORCE_DATALOAD"))
+    {
+        /* The init function @0xE0040B3A gates the DataLoad subsystem init with
+         * `cbz r5, skip` (skip create-sem FUN_e0043a6a + post-loaders FUN_e0044040).
+         * In qemu r5==0 (a hardware-state difference) so the subsystem never inits
+         * -> the Startup task deadlocks on the never-created "DataLoad" semaphore.
+         * NOP the cbz so the init ALWAYS runs (in its proper async task context,
+         * unlike a synchronous force). The property load is needed regardless. */
+        uint16_t nop = 0xBF00;  /* Thumb NOP (replaces `cbz r5,...` = 0xB12D) */
+        fprintf(stderr, "[R] FORCE_DATALOAD: NOP the cbz r5 DataLoad gate @0xE0040B3A\n");
+        MEM_WRITE_ROM(0xE0040B3A, (uint8_t*) &nop, 2);
+        /* NOTE: the deeper blocker is that the property loaders read serial-flash-
+         * backed regions (0xF0xxxxxx) via ReadBlockSerialFlash (FUN_e03c10c4), which
+         * hangs because there is no SPI serial-flash device in qemu. The real fix is
+         * to emulate that device (see eos_handle_sio_sf, WIP) -- forcing the in-memory
+         * HPCopy path (IsAddressSerialFlash->0) does NOT work: it computes an unmapped
+         * source address for SF data. */
+    }
+
+    /* EXPERIMENT (opt-in EOS_R_INJECT_SF): make the firmware's serial-flash driver work in qemu
+     * by INJECTING the SF struct (RAM 0x62BC) that InstallSerialFlash would have set up (it never
+     * runs in qemu). RE 2026-06-17/18: IsAddressSerialFlash (FUN_e03c1eb0) returns 0 unless
+     * struct[0x10]!=0, then range-checks [0x14](base)<=addr<=base+[0x18](size). ReadBlockSerialFlash
+     * (FUN_e03c10c4) bails "not install" if struct[0x10]==0, else acquires SIO on struct[0x30]
+     * (channel) and core-reads with offset = addr - struct[0x14]. So we redirect IsAddressSerialFlash
+     * to a CODE CAVE @0xE001A1D0 (free ROM0 region) that, on first call, writes the full struct
+     * (install=1, channel=10=serial_flash_sio_ch, base=0xF0000000, size=0x01000000, CS=0xD01302B4)
+     * and then returns the (addr>>24)==0xF0 check. (Just patching the F0 check alone advanced boot
+     * but looped on "not install"; ALSO skipping the install check w/o base CRASHED -- so the full
+     * struct is required.) Cave + jump assembled from sfcave.s; bytes below. */
+    if (getenv("EOS_R_INJECT_SF"))
+    {
+        /* BLANK-BYPASS (2026-06-18, validated via runtime gdb patch sio5_probe.sh): the firmware's
+         * serial-flash driver can't run in qemu -- InstallSerialFlash never dispatches, and the SIO
+         * open path (FUN_e0291b94 via the SF acquire) returns a bad handle that FUN_e03c1ee4 then
+         * dereferences -> data abort (DFAR=0x7). Two earlier attempts both stuck: (a) F0-check alone
+         * -> firmware LOOPS forever on "not install"; (b) full struct injection -> the SIO acquire
+         * CRASHES as above. This third approach lets the property loader SEE the 0xF0 region as
+         * serial-flash (so it calls ReadBlockSerialFlash instead of the unmapped HPCopy path) but
+         * stubs ReadBlockSerialFlash to return success immediately WITHOUT touching the broken SIO --
+         * i.e. blank property data. RESULT: boot advances PAST the SIO crash and the not-install loop,
+         * through several property loads (TUNE/RASEN/LENS/LENS_DATA2) to the ICU firmware version
+         * banner ("K424 ICU Firmware Version 1.8.0"), then stalls at S_PROPAD_INVALIDPARAMETER 0x20003
+         * because the property data is blank. Getting further needs the REAL 8MB serial-flash
+         * contents (a safe on-camera dump) loaded into serial_flash.c. */
+        /* (1) F0-check cave @0xE001A1D0: r1 = addr>>24; r0 = (r1==0xF0) ? 1 : 0; bx lr  (14 bytes) */
+        uint8_t sf_cave[] = { 0x01,0x0e, 0xf0,0x29, 0x01,0xd1, 0x01,0x20, 0x70,0x47, 0x00,0x20, 0x70,0x47 };
+        /* (2) jump at IsAddressSerialFlash entry 0xE03C1EB0: b.w 0xE001A1D0 (4 bytes) */
+        uint8_t sf_jump[] = { 0x58,0xf4,0x8e,0xb9 };
+        fprintf(stderr, "[R] INJECT_SF: F0-check cave @0xE001A1D0 + jump @0xE03C1EB0\n");
+        MEM_WRITE_ROM(0xE001A1D0, sf_cave, sizeof(sf_cave));
+        MEM_WRITE_ROM(0xE03C1EB0, sf_jump, sizeof(sf_jump));
+
+        if (getenv("EOS_R_SF_DATA"))
+        {
+            /* REAL-DATA (2026-06-18): serve the on-camera F0 property dump instead of blank.
+             * The on-camera "Dump FROM regions" tool MEM-read the F0 property regions; the
+             * F0A80000/AC/B00000 regions hold real combo-package data (F09C0000/TUNE came back
+             * blank). The R's F0 space is not memory-mapped in qemu (ROM1@0xF0000000 commented
+             * out; SF goes via serial_flash.c + the broken SIO), so: map a RAM region over the
+             * F0 SF space, fill 0xFF (erased flash), drop the dump in at its 0xA80000 offset,
+             * and repoint ReadBlockSerialFlash to a memcpy cave (reads MEM[addr]->dst) that
+             * reads the mapped real data and bypasses the broken SIO entirely. */
+            MemoryRegion *sfprop = g_new0(MemoryRegion, 1);
+            memory_region_init_ram(sfprop, NULL, "eos.sfprop", 0x1000000, &error_abort);
+            memory_region_add_subregion(eos_state->system_mem, 0xF0000000, sfprop);
+            uint8_t *p = memory_region_get_ram_ptr(sfprop);
+            memset(p, 0xFF, 0x1000000);
+            const char *df = eos_get_cam_path("R_SFDATA_F0A8.bin");
+            FILE *fp = fopen(df, "rb");
+            if (fp) {
+                size_t n = fread(p + 0xA80000, 1, 0xC0000, fp);
+                fclose(fp);
+                fprintf(stderr, "[R] SF_DATA: mapped F0 RAM + loaded %zu B dump @0xF0A80000\n", n);
+            } else {
+                fprintf(stderr, "[R] SF_DATA: dump missing (%s); F0 stays 0xFF\n", df);
+            }
+            /* TUNE region (F09C0000, SF offset 0x9C0000, 0x40000=256KB): captured on-camera by the
+             * CONFIG_MMU_REMAP ReadBlockSerialFlash detour (ML/LOGS/TUNE.BIN -> R_TUNE_F09C.bin).
+             * This is the region that dumped BLANK via MEM and was the FROM-property-DB wall. Drop
+             * it in at 0x9C0000 so SearchFromProperty finds the TUNE-backed properties. Optional:
+             * absent file -> region stays 0xFF (same as before this capture existed). */
+            const char *tf = eos_get_cam_path("R_TUNE_F09C.bin");
+            FILE *tp = fopen(tf, "rb");
+            if (tp) {
+                size_t tn = fread(p + 0x9C0000, 1, 0x40000, tp);
+                fclose(tp);
+                fprintf(stderr, "[R] SF_DATA: loaded %zu B TUNE dump @0xF09C0000\n", tn);
+            } else {
+                fprintf(stderr, "[R] SF_DATA: TUNE dump missing (%s); F09C0000 stays 0xFF\n", tf);
+            }
+            /* memcpy cave @0xE001A200 (sfmemcpy.s): r0=addr,r1=dst,r2=len -> memcpy; return 0 */
+            uint8_t memcpy_cave[] = { 0x00,0x2a, 0x05,0xd0, 0x03,0x78, 0x0b,0x70,
+                                      0x01,0x30, 0x01,0x31, 0x01,0x3a, 0xf7,0xe7,
+                                      0x00,0x20, 0x70,0x47 };
+            uint8_t rbsf_jump[] = { 0x59,0xf4,0x9c,0xb8 };  /* b.w 0xE03C10C4 -> 0xE001A200 */
+            MEM_WRITE_ROM(0xE001A200, memcpy_cave, sizeof(memcpy_cave));
+            MEM_WRITE_ROM(0xE03C10C4, rbsf_jump, sizeof(rbsf_jump));
+            fprintf(stderr, "[R] SF_DATA: ReadBlockSerialFlash -> memcpy cave (real dump)\n");
+        }
+        else
+        {
+            /* BLANK-BYPASS: ReadBlockSerialFlash returns blank-success (movs r0,#0; bx lr) */
+            uint8_t rbsf_skip[] = { 0x00,0x20, 0x70,0x47 };
+            MEM_WRITE_ROM(0xE03C10C4, rbsf_skip, sizeof(rbsf_skip));
+            fprintf(stderr, "[R] INJECT_SF: blank-bypass (set EOS_R_SF_DATA for real dump)\n");
+        }
+    }
+
+    if (getenv("EOS_R_NO_PATCH"))
+        return;
+
+    uint32_t bx_lr = 0x4770;        /* Thumb 'bx lr' */
+    fprintf(stderr, "[R] Patching 0xE05ED578 (DryOS assert -> return)\n");
+    MEM_WRITE_ROM(0xE05ED578, (uint8_t*) &bx_lr, 2);
+
+    /* Early-boot property null-derefs: some init code queries DataType
+     * 0x20000073 / 0x12000000 (GetCameraFlag) BEFORE Main/StartupDataLoad.c
+     * registers those packages, so the lookup returns NULL and the firmware
+     * dereferences it -> data abort, before StartupDataLoad ever runs. Stub
+     * both to 'return 0' (movs r0,#0; bx lr) so boot survives to the point
+     * where StartupDataLoad loads the SERVICE_DATA (0x12000000) from ROM0
+     * @0xE1FFC000. */
+    uint32_t ret0 = 0x47702000;     /* movs r0,#0 ; bx lr */
+    fprintf(stderr, "[R] Patching 0xE021F0AC + 0xE021CA38 (early property null-deref -> return 0)\n");
+    MEM_WRITE_ROM(0xE021F0AC, (uint8_t*) &ret0, 4);
+    MEM_WRITE_ROM(0xE021CA38, (uint8_t*) &ret0, 4);
 }
 
 static void patch_EOSM10(void)
@@ -2050,7 +2194,29 @@ static void eos_init_common(void)
         const char *sf_filename = eos_get_cam_path("SFDATA.BIN");
         eos_state->sf = serial_flash_init(sf_filename, eos_state->model->serial_flash_size);
     }
-    
+
+    /* SPI EEPROM (EOS R config/property store) - load 32KB dump from EEPROM.BIN */
+    if (eos_state->model->eeprom_size)
+    {
+        const char *ee_filename = eos_get_cam_path("EEPROM.BIN");
+        eos_state->eeprom_size = eos_state->model->eeprom_size;
+        eos_state->eeprom_data = malloc(eos_state->eeprom_size);
+        eos_state->eep_state = 0;
+        eos_state->eep_rx = 0xFF;
+        if (eos_state->eeprom_data) {
+            FILE *f = fopen(ee_filename, "rb");
+            if (f) {
+                size_t n = fread(eos_state->eeprom_data, 1, eos_state->eeprom_size, f);
+                fprintf(stderr, "[EOS] loaded '%s' as EEPROM, 0x%zX/0x%X bytes\n",
+                        ee_filename, n, eos_state->eeprom_size);
+                fclose(f);
+            } else {
+                fprintf(stderr, "[EOS] EEPROM.BIN not found (%s); EEPROM reads return 0xFF\n", ee_filename);
+                memset(eos_state->eeprom_data, 0xFF, eos_state->eeprom_size);
+            }
+        }
+    }
+
     /* init UART */
     qdev_prop_set_chr(DEVICE(&eos_state->uart), "chardev", serial_hd(0));
     qemu_chr_fe_set_handlers(&eos_state->uart.chr, eos_uart_can_rx, eos_uart_rx,
@@ -2091,6 +2257,11 @@ static void eos_init_common(void)
     if (strcmp(eos_state->model->name, MODEL_NAME_EOSM5) == 0)
     {
         patch_EOSM5();
+    }
+
+    if (strcmp(eos_state->model->name, MODEL_NAME_EOSR) == 0)
+    {
+        patch_R();
     }
 
     if (eos_state->model->digic_version == 6)
@@ -4811,10 +4982,79 @@ static unsigned int eos_handle_A1100_rtc(unsigned int parm, unsigned int address
     return ret;
 }
 
+/* --- SPI EEPROM emulation (EOS R 32KB config/property store) ------------- *
+ * Protocol (RE'd from ReadBlockEEPROM FUN_e03d404e):
+ *   CS asserted (GPIO 0xD01302C4 = 0xC0003) frames each transaction:
+ *     status poll: 0x05 -> read status byte (bit0 = WIP, we report idle)
+ *     read array : 0x03 -> addr_hi -> addr_lo -> read N bytes (auto-increment)
+ *   CS deasserted (0xD0002) resets the state machine.
+ * Each FUN_e03d4012(b) clocks one byte: TX write (reg 0x18) then RX read (0x1C).
+ */
+static void eeprom_set_CS(EOSState *s, int deasserted)
+{
+    if (deasserted) { s->eep_state = 0; s->eep_addr = 0; s->eep_rx = 0xFF; }
+}
+
+static void eeprom_spi_write(EOSState *s, uint8_t v)
+{
+    switch (s->eep_state) {
+        case 0:                                  /* idle: command byte */
+            if (v == 0x03) { s->eep_state = 1; s->eep_rx = 0xFF; }  /* READ array  */
+            else if (v == 0x05) { s->eep_state = 5;                 /* READ status */
+                                  s->eep_rx = 0x00; }               /* WIP clear   */
+            else { s->eep_state = 0xFF; s->eep_rx = 0xFF; }         /* unhandled   */
+            break;
+        case 1: s->eep_addr = (uint32_t)v << 8; s->eep_state = 2; break;  /* addr hi */
+        case 2: s->eep_addr |= v; s->eep_state = 3; s->eep_rx = 0xFF;     /* addr lo */
+                if (getenv("EE_TRACE"))
+                    fprintf(stderr, "[EEPROM] READ cmd @0x%04X\n", s->eep_addr);
+                break;                           /* read clocked here is garbage    */
+        default: break;                          /* data/status: dummy writes ignored */
+    }
+}
+
+static uint8_t eeprom_spi_read(EOSState *s)
+{
+    /* SPI is full-duplex: the byte returned with each clock is whatever was
+     * loaded by the *previous* clock. In the data phase the first real data
+     * byte therefore appears on the clock after addr_lo, not with it. */
+    uint8_t cur = s->eep_rx;
+    if (s->eep_state == 3) {                      /* data phase: load next byte */
+        s->eep_rx = (s->eeprom_data && s->eep_addr < s->eeprom_size)
+                    ? s->eeprom_data[s->eep_addr] : 0xFF;
+        if (getenv("EE_TRACE"))
+            fprintf(stderr, "[EEPROM]   @0x%04X -> 0x%02X\n", s->eep_addr, s->eep_rx);
+        s->eep_addr++;
+    }
+    return cur;
+}
+
+static unsigned int eos_handle_sio_eeprom(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
+{
+    unsigned int ret = 0;
+    switch (address & 0xFF) {
+        case 0x04:                                /* status/busy: report not busy */
+            break;
+        case 0x18:                                /* TX */
+            if (type & MODE_WRITE) eeprom_spi_write(eos_state, value & 0xFF);
+            break;
+        case 0x1C:                                /* RX */
+            if (type & MODE_READ) ret = eeprom_spi_read(eos_state);
+            break;
+    }
+    return ret;
+}
+
 unsigned int eos_handle_sio(unsigned int parm, unsigned int address, unsigned char type, unsigned int value)
 {
     if ((address & 0xFFFFFF00) == 0xC0820400 && strcmp(eos_state->model->name, MODEL_NAME_A1100) == 0) {
         return eos_handle_A1100_IS_com(parm, address, type, value);
+    }
+
+    if (eos_state->eeprom_data && parm == eos_state->model->eeprom_sio_ch)
+    {
+        /* SPI EEPROM (config/property store) */
+        return eos_handle_sio_eeprom(parm, address, type, value);
     }
 
     if (eos_state->sf && parm == eos_state->model->serial_flash_sio_ch)
@@ -6991,11 +7231,18 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             ret = 1;
             break;
 
+        case 0xD98000BC:
+            /* EOS R Camif_ADC init spin-waits for bit1 of this register
+             * (while(-1 < *reg << 0x1e)); return it set so the wait exits
+             * deterministically instead of relying on rand() */
+            msg = "CamifADC ready";
+            ret = 0x2;
+            break;
+
         case 0xD7100014:
         case 0xD7100020:
         case 0xD7100000:
         case 0xD0740010:
-        case 0xD98000BC:
         case 0xDE000000:
         case 0xDE000014:
         case 0xDE000020:
@@ -7019,6 +7266,22 @@ unsigned int eos_handle_digic6(unsigned int parm, unsigned int address, unsigned
             msg = "EEP_CS2 ack";
             ret = (rand() & 1) ? 0xD0002 : 0xC0003;
             break;
+
+        case 0xD01302C4:        /* EOS R EEPROM chip-select (RE'd: struct[0x2c]=0x2C4) */
+            msg = "EEPROM CS";
+            if (type & MODE_WRITE) {
+                eos_state->eep_cs_last = value;
+                if (eos_state->eeprom_data) {
+                    /* assert=0xC0003 (bit16=0), deassert=0xD0002 (bit16=1) */
+                    eeprom_set_CS(eos_state, (value & eos_state->model->eeprom_cs_bitmask) ? 1 : 0);
+                }
+            }
+            return 0;           /* skip the 0xD0130xxx catch-all below */
+
+        case 0xD01322C4:        /* EEPROM CS readback (bit16 mirrors last CS write) */
+            msg = "EEPROM CS ack";
+            ret = eos_state->eep_cs_last;
+            return ret;
 
         case 0xD0213024:
             msg = "SubCPU ack?";

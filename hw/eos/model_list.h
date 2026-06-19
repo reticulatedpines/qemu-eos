@@ -103,6 +103,10 @@ struct eos_model_desc {
             uint32_t serial_flash_cs_bitmask;
             uint32_t serial_flash_sio_ch;
             uint32_t serial_flash_interrupt;
+            uint32_t eeprom_size;          /* SPI EEPROM (config/property store) */
+            uint32_t eeprom_sio_ch;        /* SIO channel index serving the EEPROM */
+            uint32_t eeprom_cs_register;   /* GPIO reg toggling EEPROM chip-select */
+            uint32_t eeprom_cs_bitmask;    /* bit in cs_register marking CS deasserted */
             uint32_t sd_driver_interrupt;
             uint32_t sd_dma_interrupt;
             uint32_t cf_driver_interrupt;
@@ -125,7 +129,7 @@ struct eos_model_desc {
         
         /* this must match the number of items in the above struct */
         /* note: you get a compile-time error if params[] is smaller than the struct */
-        uint32_t params[50 + ram_extra_array_len * 2];
+        uint32_t params[54 + ram_extra_array_len * 2];
     };
 } __attribute__((packed));
 

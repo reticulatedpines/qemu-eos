@@ -717,6 +717,28 @@ struct eos_model_desc eos_model_list[] = {
         .rom0_size              = 0x02000000,   // 32MB (main ROM)
         .rom1_size              = 0x04000000,   // 64MB (secondary ROM)
         .dedicated_movie_mode   = 0,            // camera has support for it. TODO: Set to 1 when implementing it.
+        /* MPU interface - RE'd from ROM0 (Ghidra) + live intercom struct @0x9E60 read on real hardware via ML */
+        .mpu_request_register   = 0xD0130180,   /* struct[0x2c]=0x180 + reg_write base 0xD0130000; mpu_send writes 0x4C0003 */
+        .mpu_request_bitmask    = 0x00010000,   /* 0x4C0003 request, 0x4D0002 idle (toggling bit) */
+        .mpu_status_register    = 0xD0132180,   /* struct[0x30]=0x180 + 0xD0132000; read & 1 in SIO3_ISR */
+        .mpu_control_register   = 0xD0213004,   /* struct[0x34]; 0xC written in MREQ_ISR (live *ptr=0xD) */
+        .mpu_mreq_interrupt     = 0x1A,         /* MREQ_ISR (confirmed via gdb: RegisterInterruptHandler id 0x1A) */
+        .mpu_sio3_interrupt     = 0x147,        /* SIO3_ISR (confirmed via gdb) */
+        /* SPI EEPROM (32KB config/property store) - RE'd from EEPROM struct @0x4CD4 (live HW dump) + ReadBlockEEPROM FUN_e03d404e */
+        .eeprom_size            = 0x8000,       /* 32KB device (struct[0x10]=0x7F00 usable range) */
+        .eeprom_sio_ch          = 8,            /* struct[0x50]=ch7; base 0xC0820100+7*0x100 = 0xC0820800 -> SIO8 */
+        .eeprom_cs_register     = 0xD01302C4,   /* struct[0x2c]=0x2C4 + reg_write base 0xD0130000 (FUN_e03060b8) */
+        .eeprom_cs_bitmask      = 0x00010000,   /* assert=0xC0003 (bit16=0), deassert=0xD0002 (bit16=1) */
+        /* SPI serial flash (8MB) - EXPERIMENT A: M50-derived guesses (R's closest D8 sibling;
+         * M50 SF params commented at the EOSM50 block). size 0x800000 confirmed (FUN_e03c052a
+         * dumps 8MB). CS likely 0xD01302B4 (M50's; R EEPROM CS 0xD01302C4 is adjacent). Enables
+         * serial_flash.c (eos.c:2102 serial_flash_init needs workdir/R/SFDATA.BIN or it exit(1)s). */
+        .serial_flash_size        = 0x800000,
+        .serial_flash_sio_ch      = 10,  /* M50-derived; the real channel for once the SF struct
+                                          * (struct[0x30]) is injected. */
+        .serial_flash_interrupt   = 0xFE,
+        .serial_flash_cs_register = 0xD01302B4,
+        .serial_flash_cs_bitmask  = 0x00010000,
     },
     {
         .name                   = MODEL_NAME_EOSRP,

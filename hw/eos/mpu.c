@@ -49,6 +49,7 @@ static int mpu_init_spell_count = 0;
 #include "mpu_spells/100D.h"
 #include "mpu_spells/EOSM.h"
 #include "mpu_spells/EOSM2.h"
+#include "mpu_spells/R.h"
 #include "mpu_spells/generic.h"
 #include "mpu_spells/bruteforce.h"
 
@@ -1229,6 +1230,7 @@ void mpu_spells_init(void)
     MPU_SPELL_SET(100D)
     MPU_SPELL_SET(EOSM)
     MPU_SPELL_SET(EOSM2)
+    MPU_SPELL_SET(R)
 
     /* 1200D works with 60D MPU spells... and BOOTS THE GUI!!! */
     /* same for 1100D */
@@ -1247,6 +1249,12 @@ void mpu_spells_init(void)
         mpu_init_spell_count = COUNT(mpu_init_spells_generic);
         /* how to get them: http://magiclantern.fm/forum/index.php?topic=2864.msg166938#msg166938 */
     }
+
+    /* Initialise the request register to the idle state (request bit set), so
+     * the firmware's very first idle->request transition (bit going high->low)
+     * is detected. Without this, mpu.status starts at 0 and the first request
+     * is missed (e.g. EOS R: idle 0x4D0002 bit set, request 0x4C0003 bit clear). */
+    eos_state->mpu.status = eos_state->model->mpu_request_bitmask;
 
     if (0)
     {

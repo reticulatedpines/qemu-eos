@@ -1416,11 +1416,14 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
     MemTxResult r;
 
     if (!memory_region_access_valid(mr, addr, size, false, attrs)) {
-        *pval = unassigned_mem_read(mr, addr, size);
-        fprintf(stderr, "[EOS] MEMTX invalid read - addr, size: 0x%lx, 0x%x\n", addr, size);
-        // the cause needs investigating, but if this is due to a read from normal ram
-        // that would succeed on real cam, extending ram_extra in model_list.c may be appropriate.
-        return MEMTX_DECODE_ERROR;
+        *pval = 0;
+        /* EOS R bring-up: tolerate invalid reads (return 0) instead of
+         * asserting, so the boot pushes past property-id-as-pointer reads and
+         * reveals the next real blocker. Was: MEMTX_DECODE_ERROR. */
+        static int invrd_count = 0;
+        if (invrd_count++ < 100)
+            fprintf(stderr, "[EOS] invalid read (tolerated) addr 0x%lx size 0x%x\n", addr, size);
+        return MEMTX_OK;
     }
 
     r = memory_region_dispatch_read1(mr, addr, pval, size, attrs);
