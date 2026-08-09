@@ -26,7 +26,7 @@ struct known_spell {
 };
 
 const struct known_spell known_spells[] = {""")
-    for spell, data in sorted(known_spells.iteritems()):
+    for spell, data in sorted(known_spells.items()):
         prop = data[0]
         desc = data[1]
         spell = ", ".join(["0x%s" % x for x in spell.split(" ")])
@@ -76,10 +76,10 @@ last_bind_switch = None
 for l in lines:
     # match bindReceiveSwitch with GUI_Control, both from MainCtrl task
     # note: GUI_Control messages can be sent from other tasks
-    m = re.match(".* MainCtrl:.*bindReceiveSwitch *\(([^()]*)\)", l)
+    m = re.match(r".* MainCtrl:.*bindReceiveSwitch *\(([^()]*)\)", l)
     if not m:
         # VxWorks (450D)
-        m = re.match(".* tMainCtrl:.*\[BIND\] Switch *\(([^()]*)\)", l)
+        m = re.match(r".* tMainCtrl:.*\[BIND\] Switch *\(([^()]*)\)", l)
     if m:
         args = m.groups()[0].split(",")
         args = tuple([int(a) for a in args])
@@ -89,7 +89,7 @@ for l in lines:
         continue
     m = re.match(".* MainCtrl:.*GUI_Control:([0-9]+) +0x([0-9])+", l)
     if not m:
-        m = re.match(".* tMainCtrl:.*\[BIND\] bindReceiveSwitch \(([0-9]+)\)", l)
+        m = re.match(r".* tMainCtrl:.*\[BIND\] bindReceiveSwitch \(([0-9]+)\)", l)
     if m:
         if last_bind_switch is not None:
             arg1 = int(m.groups()[0])
@@ -116,7 +116,7 @@ for l in lines:
         prev_hwcount = hwcount
         timestamp = overflows * 0x100000 + hwcount
 
-    m = re.match(".* mpu_send\(([^()]*)\)", l)
+    m = re.match(r".* mpu_send\(([^()]*)\)", l)
     if m:
         last_mpu_timestamp = timestamp
         spell = m.groups()[0].strip()
@@ -200,7 +200,7 @@ for l in lines:
 
             continue
 
-    m = re.match(".* mpu_recv\(([^()]*)\)", l)
+    m = re.match(r".* mpu_recv\(([^()]*)\)", l)
     if m:
         reply = m.groups()[0].strip()
         num2 += 1
@@ -304,7 +304,7 @@ for l in lines:
     #    PropMgr:00c5c318:00:00: *** mpu_send(08 06 00 00 04 00 00), from 616c
     # the countdown at the end of the line must be 0
 
-    m = re.match(".*Complete WaitID = ([0-9A-Fx]+), ([0-9A-Fx]+)\(0\)", l)
+    m = re.match(r".*Complete WaitID = ([0-9A-Fx]+), ([0-9A-Fx]+)\(0\)", l)
     if m:
         waitid_prop = m.groups()[0]
 
