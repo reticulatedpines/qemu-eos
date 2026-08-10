@@ -144,7 +144,7 @@ name_to_mpu["GMT_GUICMD_OPEN_BATT_COVER"] = tuple(map(sum,
     zip(name_to_mpu["GMT_GUICMD_OPEN_SLOT_COVER"], (1, 0))))
 
 print("static int button_codes_%s[] = {" % camera_model)
-for n,v in sorted(name_to_mpu.iteritems()):
+for n,v in sorted(name_to_mpu.items()):
     print("    %-35s = 0x%02X%02X," % ("[%s]" % n, v[0], v[1]))
 print("    [BGMT_END_OF_LIST]                  = 0x0000")
 print("};")
